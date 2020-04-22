@@ -5,7 +5,8 @@ import org.antlr.v4.runtime.tree.ParseTreeWalker;
 
 public class Main {
     public static void main(String[] args) throws Exception {
-        ANTLRFileStream input = new ANTLRFileStream(args[0]);
+        String fileName = args[0];
+        ANTLRFileStream input = new ANTLRFileStream(fileName);
 
         MKLexer lexer = new MKLexer(input);
 
@@ -15,7 +16,7 @@ public class Main {
         ParseTree tree = parser.file();
 
         ParseTreeWalker walker = new ParseTreeWalker();
-        walker.walk(new LLVMActions(), tree);
+        walker.walk(new LLVMActions(fileName), tree);
 
     }
 }

@@ -7,6 +7,12 @@ public class LLVMActions extends MKBaseListener {
     private LLVMGenerator generator = new LLVMGenerator(globalVariables);
     private Stack<ExplicitExpression> stack = new Stack<ExplicitExpression>();
     private Configuration configuration = new Configuration();
+    private int line = 0;
+    private String fileName;
+
+    public LLVMActions(String fileName) {
+        this.fileName = fileName;
+    }
 
     private class ExplicitExpression {
         private Object value;
@@ -53,11 +59,8 @@ public class LLVMActions extends MKBaseListener {
         String name = variable.getName();
         switch (scope) {
             case GLOBAL:
-                if (globalVariables.containsKey(name)) {
-
-                } else {
-                    //error
-                }
+                globalVariables.put(name, variable);
+                generator.assignVariable(variable);
                 break;
         }
     }
@@ -68,7 +71,7 @@ public class LLVMActions extends MKBaseListener {
         switch (scope) {
             case GLOBAL:
                 if (globalVariables.containsKey(name)) {
-                    //error
+                    printError("declaring already existing lady " + name);
                 } else {
                     globalVariables.put(name, variable);
                     generator.declareVariable(variable);
@@ -79,32 +82,38 @@ public class LLVMActions extends MKBaseListener {
 
     @Override
     public void exitInt(MKParser.IntContext context) {
+        line = context.getStart().getLine();
+
         Integer value = Integer.parseInt(context.INT().getText());
         new ExplicitExpression(value, VariableType.INT);
     }
 
     @Override
     public void exitStr(MKParser.StrContext context) {
+        line = context.getStart().getLine();
+
         String value = context.STR().getText();
         new ExplicitExpression(value, VariableType.STR);
     }
 
     @Override
     public void exitName(MKParser.NameContext context) {
+        line = context.getStart().getLine();
+
         String name = context.NAME().getText();
 
         if (globalVariables.containsKey(name)) {
             Variable variable = globalVariables.get(name);
             new ExplicitExpression(variable);
         } else {
-            System.out.println("give error here - assigning to non-existing variable");
-            System.exit(0);
+
         }
     }
 
     @Override
     public void exitVariable_declaration(MKParser.Variable_declarationContext context) {
-        //int line = context.getStart().getLine();
+        line = context.getStart().getLine();
+
         String name = context.NAME().getText();
         Object value = null;
         VariableType type = null;
@@ -122,7 +131,27 @@ public class LLVMActions extends MKBaseListener {
     }
 
     @Override
+    public void exitVariable_assignment(MKParser.Variable_assignmentContext context) {
+        line = context.getStart().getLine();
+
+        String name = context.NAME().getText();
+
+        ExplicitExpression explicitExpression = stack.pop();
+        Object value = explicitExpression.getValue();
+        VariableType type = explicitExpression.getType();
+
+        if (globalVariables.containsKey(name)) {
+            Variable variable = new Variable(VariableScope.GLOBAL, type, name, value);
+            assignVariable(variable);
+        } else {
+            printError("assigning to non-existing lady " + name);
+        }
+    }
+
+    @Override
     public void exitPrint(MKParser.PrintContext context) {
+        line = context.getStart().getLine();
+
         ExplicitExpression explicitExpression = stack.pop();
         Variable variable = explicitExpression.getVariable();
         Object object = explicitExpression.getValue();
@@ -150,7 +179,46 @@ public class LLVMActions extends MKBaseListener {
 
     @Override
     public void exitFile(MKParser.FileContext context) {
+        line = context.getStart().getLine();
+
         generator.generateOutput();
+    }
+
+    public void convertType(Variable variable, VariableType newType, Object newValue) {
+        VariableScope scope = variable.getScope();
+        VariableType previousType = variable.getType();
+        String name = variable.getName();
+
+        String previousValue = variable.getValue().toString();
+
+        try {
+            switch (newType) {
+                case INT:
+                    newValue = Integer.parseInt(previousValue);
+                    break;
+                case REAL:
+                    newValue = Double.parseDouble(previousValue);
+                    break;
+                case STR:
+                    newValue = previousValue;
+                    break;
+            }
+        } catch(java.lang.NumberFormatException e) {
+            printError("cannot parse lady from " + previousType + " to " + newType);
+        }
+
+        Variable newVariable = new Variable(scope, newType, name, newValue);
+
+        switch (scope) {
+            case GLOBAL:
+                globalVariables.put(name, newVariable);
+                break;
+        }
+    }
+
+    private void printError(String message) {
+        System.err.println("Error at line " + line + " - " + message + " in " + fileName);
+        System.exit(1);
     }
 }
 

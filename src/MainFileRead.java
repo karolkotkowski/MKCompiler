@@ -7,7 +7,9 @@ import java.util.Stack;
 
 public class MainFileRead {
     public static void main(String[] args) throws Exception {
-        ANTLRFileStream input = new ANTLRFileStream("test.mk");
+        String fileName = "test.mk";
+
+        ANTLRFileStream input = new ANTLRFileStream(fileName);
 
         MKLexer lexer = new MKLexer(input);
 
@@ -17,6 +19,6 @@ public class MainFileRead {
         ParseTree tree = parser.file();
 
         ParseTreeWalker walker = new ParseTreeWalker();
-        walker.walk(new LLVMActions(), tree);
+        walker.walk(new LLVMActions(fileName), tree);
     }
 }

@@ -67,7 +67,11 @@ public class LLVMGenerator {
         switch (type) {
             case INT:
                 String textValue = value.toString();
-                bodyText.append("  store i32 " + textValue + ", i32* @var_" + name + "\n\n");
+                switch (scope) {
+                    case GLOBAL:
+                        bodyText.append("  store i32 " + textValue + ", i32* @var_" + name + "\n\n");
+                        break;
+                }
                 break;
             case REAL:
 
