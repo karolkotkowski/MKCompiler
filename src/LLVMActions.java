@@ -1,11 +1,10 @@
 import java.util.HashMap;
-import java.util.Iterator;
 import java.util.Stack;
 
 public class LLVMActions extends MKBaseListener {
     private HashMap<String, Variable> globalVariables = new HashMap<String, Variable>();
     private LLVMGenerator generator = new LLVMGenerator(globalVariables);
-    private Stack<ExplicitExpression> stack = new Stack<ExplicitExpression>();
+    private Stack<ExplicitExpression> expressionStack = new Stack<ExplicitExpression>();
     private Configuration configuration = new Configuration();
     private int line = 0;
     private String fileName;
@@ -23,14 +22,14 @@ public class LLVMActions extends MKBaseListener {
             this.value = value;
             this.type = type;
             this.variable = null;
-            stack.push(this);
+            expressionStack.push(this);
         }
 
         public ExplicitExpression(Variable variable) {
             this.variable = variable;
             this.value = variable.getValue();
             this.type = variable.getType();
-            stack.push(this);
+            expressionStack.push(this);
         }
 
         public Object getValue() {
@@ -121,7 +120,7 @@ public class LLVMActions extends MKBaseListener {
         if (context.ASSIGN() == null) {
             type = VariableType.NONE;
         } else {
-            ExplicitExpression explicitExpression = stack.pop();
+            ExplicitExpression explicitExpression = expressionStack.pop();
             value = explicitExpression.getValue();
             type = explicitExpression.getType();
         }
@@ -136,7 +135,7 @@ public class LLVMActions extends MKBaseListener {
 
         String name = context.NAME().getText();
 
-        ExplicitExpression explicitExpression = stack.pop();
+        ExplicitExpression explicitExpression = expressionStack.pop();
         Object value = explicitExpression.getValue();
         VariableType type = explicitExpression.getType();
 
@@ -152,10 +151,28 @@ public class LLVMActions extends MKBaseListener {
     public void exitPrint(MKParser.PrintContext context) {
         line = context.getStart().getLine();
 
-        ExplicitExpression explicitExpression = stack.pop();
-        Variable variable = explicitExpression.getVariable();
-        Object object = explicitExpression.getValue();
-        switch (explicitExpression.getType()) {
+        String name = context.NAME().getText();
+
+        Variable variable = null;
+        Object object = null;
+        VariableType type = VariableType.NONE;
+
+        if (name == null) {
+            ExplicitExpression explicitExpression = expressionStack.pop();
+            variable = explicitExpression.getVariable();
+            object = explicitExpression.getValue();
+            type = explicitExpression.getType();
+        } else {
+            if (globalVariables.containsKey(name)) {
+                variable = globalVariables.get(name);
+                object = variable.getValue();
+                type = variable.getType();
+            } else {
+                printError("printing non-existing lady " + name);
+            }
+        }
+
+        switch (type) {
             case INT:
                 if (variable == null) {
                     generator.printInt(object.toString());
@@ -174,6 +191,20 @@ public class LLVMActions extends MKBaseListener {
                 }
 
                 break;
+        }
+    }
+
+    @Override
+    public void exitScan_int(MKParser.Scan_intContext context) {
+        line = context.getStart().getLine();
+
+        String name = context.NAME().getText();
+
+        if (globalVariables.containsKey(name)) {
+            Variable variable = globalVariables.get(name);
+            generator.scanInt(variable);
+        } else {
+            printError("scanning to non-existing lady " + name);
         }
     }
 

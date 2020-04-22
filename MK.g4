@@ -6,7 +6,7 @@ block                   : OPENBLOCK statement+ CLOSEBLOCK;
 
 statement               : (variable_declaration | variable_assignment | command) ENDSTATEMENT;
 
-command                 : print;
+command                 : print | scan;
 
 variable_declaration    : DECLAREVARIABLE NAME (ASSIGN expression)?;
 variable_assignment     : NAME ASSIGN expression;
@@ -28,10 +28,10 @@ expression2             : bracket_expression                #bracket
                           ;
 bracket_expression      : OPENBRACKET expression CLOSEBRACKET;
 
-print                   : PRINT expression;
+print                   : PRINT (NAME | expression);
 
-
-
+scan                    : SCAN INTMARK NAME                   #scan_int
+                          ;
 
 ENDSTATEMENT            : ';';
 
@@ -46,6 +46,8 @@ DECLAREVARIABLE         : 'lady';
 
 PRINT                   : 'whisper';
 SCAN                    : 'hear';
+
+INTMARK                 : 'int';
 
 NAME                    : [a-zA-Z] | [a-zA-Z][a-zA-Z0-9]+;
 

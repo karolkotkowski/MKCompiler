@@ -1,4 +1,4 @@
-lady a = 1;
+lady a = 69;
 whisper a;
-a = 2;
+hear int a;
 whisper a;

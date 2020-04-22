@@ -9,6 +9,7 @@ public class Configuration {
         systemVariables.put("printValue", "@sysvar_printval");
         systemVariables.put("printf", "@printf");
         systemVariables.put("scanf", "@scanf");
+        systemVariables.put("scanInt", "@sysvar_scanint");
     }
 
     public HashMap<String, String> getSystemVariables() {

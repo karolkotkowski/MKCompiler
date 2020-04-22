@@ -6,6 +6,7 @@ public class LLVMGenerator {
     private StringBuilder headerText = new StringBuilder();
     private StringBuilder bodyText = new StringBuilder();
     private int printableIndex = 0;
+    private int scannableIndex = 0;
 
     private Configuration configuration = new Configuration();
     private HashMap<String, String>  systemVariables = configuration.getSystemVariables();
@@ -17,7 +18,9 @@ public class LLVMGenerator {
     public void generateOutput() {
         StringBuilder text = new StringBuilder();
         text.append("declare i32 @printf(i8*, ...)\n");
+        text.append("declare i32 @scanf(i8*, ...)\n");
         text.append(systemVariables.get("printInt") + " = constant [4 x i8] c\"%d\\0A\\00\"\n");
+        text.append(systemVariables.get("scanInt") + " = constant [3 x i8] c\"%d\\00\"\n");
         text.append("\n");
         text.append(headerText);
         text.append("\n");
@@ -124,5 +127,17 @@ public class LLVMGenerator {
         printableIndex++;
         bodyText.append("  %printable" + printableIndex + " = call i32 (i8* , ...) @printf(i8* getelementptr inbounds ([4 x i8], [4 x i8]*" + systemVariables.get("printInt") + ", i32 0, i32 0), i32 %printable" + (printableIndex - 1) + ")\n\n");
         printableIndex++;
+    }
+
+    public void scanInt(Variable variable) {
+        VariableScope scope = variable.getScope();
+        String name = variable.getName();
+
+        switch (scope) {
+            case GLOBAL:
+                bodyText.append("  %scannable" + scannableIndex + " = call i32 (i8*, ...) @scanf(i8* getelementptr inbounds ([3 x i8], [3 x i8]* " + systemVariables.get("scanInt") + ", i32 0, i32 0), i32* @var_" + name + ")\n\n");
+                printableIndex++;
+                break;
+        }
     }
 }
