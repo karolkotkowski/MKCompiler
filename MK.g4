@@ -11,13 +11,13 @@ command                 : print | scan;
 variable_declaration    : DECLAREVARIABLE NAME (ASSIGN expression)?;
 variable_assignment     : NAME ASSIGN expression;
 
-expression      : expression1                       #single1
-                          | expression1 (ADD expression)+  #add
-                          | expression1 (SUB expression)+  #subtract
+expression              : expression1                       #single1
+                          | expression1 ADD expression      #add
+                          | expression1 SUB expression      #subtract
                           ;
 expression1             : expression2                       #single2
-                          | expression2 (MUL expression1)+  #multiply
-                          | expression2 (DIV expression1)+  #divide
+                          | expression2 MUL expression1     #multiply
+                          | expression2 DIV expression1     #divide
                           ;
 expression2             : bracket_expression                #bracket
                           | NAME                            #name
@@ -30,7 +30,9 @@ bracket_expression      : OPENBRACKET expression CLOSEBRACKET;
 
 print                   : PRINT (NAME | expression);
 
-scan                    : SCAN INTMARK NAME                   #scan_int
+scan                    : SCAN INTSTATEMENT NAME            #scan_int
+                          | SCAN REALSTATEMENT NAME         #scan_real
+                          | SCAN STRSTATEMENT NAME          #scan_str
                           ;
 
 ENDSTATEMENT            : ';';
@@ -47,12 +49,15 @@ DECLAREVARIABLE         : 'lady';
 PRINT                   : 'whisper';
 SCAN                    : 'hear';
 
-INTMARK                 : 'int';
+INTSTATEMENT            : 'int';
+REALSTATEMENT           : 'real';
+STRSTATEMENT            : 'str';
+
 
 NAME                    : [a-zA-Z] | [a-zA-Z][a-zA-Z0-9]+;
 
 INT                     : [-+]?DIGIT+;
-REAL                    : [-+]?DIGIT'.'DIGIT+;
+REAL                    : [-+]?DIGIT+ '.' DIGIT+;
 DIGIT                   : [0-9];
 
 CHAR                    : CHARMARK ~'\''? CHARMARK {setText(getText().substring(1, getText().length()-1));};

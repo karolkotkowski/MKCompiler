@@ -3,12 +3,14 @@ public class Variable {
     private String name;
     private Object value;
     private VariableScope scope;
+    private int memoryIndex;
 
     public Variable(VariableScope scope, VariableType type, String name, Object value) {
         this.scope = scope;
         this.type = type;
         this.name = name;
         this.value = value;
+        this.memoryIndex = 0;
     }
 
     public VariableType getType() {
@@ -35,6 +37,14 @@ public class Variable {
         this.value = value;
     }
 
+    public int getMemoryIndex() {
+        return memoryIndex;
+    }
+
+    public void increaseMemoryIndex() {
+        this.memoryIndex++;
+    }
+
     public VariableScope getScope() {
         return scope;
     }
@@ -42,4 +52,5 @@ public class Variable {
     public void setScope(VariableScope scope) {
         this.scope = scope;
     }
+
 }
