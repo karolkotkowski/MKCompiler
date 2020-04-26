@@ -5,7 +5,7 @@ import org.antlr.v4.runtime.tree.ParseTreeWalker;
 
 import java.util.Stack;
 
-public class MainFileRead {
+public class MainToConsole {
     public static void main(String[] args) throws Exception {
         String fileName = "test.mk";
 
@@ -20,5 +20,7 @@ public class MainFileRead {
 
         ParseTreeWalker walker = new ParseTreeWalker();
         walker.walk(new LLVMActions(fileName), tree);
+
+
     }
 }

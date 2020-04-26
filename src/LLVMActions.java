@@ -13,46 +13,6 @@ public class LLVMActions extends MKBaseListener {
         this.fileName = fileName;
     }
 
-    private class ExplicitExpression {
-        private Object value;
-        private VariableType type;
-        private Variable variable;
-
-        public ExplicitExpression(Object value, VariableType type) {
-            this.value = value;
-            this.type = type;
-            this.variable = null;
-            expressionStack.push(this);
-        }
-
-        public ExplicitExpression(Variable variable) {
-            this.variable = variable;
-            this.value = variable.getValue();
-            this.type = variable.getType();
-            expressionStack.push(this);
-        }
-
-        public Object getValue() {
-            return value;
-        }
-
-        public VariableType getType() {
-            return type;
-        }
-
-        public Variable getVariable() {
-            return variable;
-        }
-
-        @Override
-        public String toString() {
-            return "ExplicitExpression{" +
-                    "value=" + value +
-                    ", type=" + type +
-                    '}';
-        }
-    }
-
     private void assignVariable(Variable variable) {
         VariableScope scope = variable.getScope();
         String name = variable.getName();
@@ -85,11 +45,49 @@ public class LLVMActions extends MKBaseListener {
     }
 
     @Override
+    public void exitAdd(MKParser.AddContext context) {
+        int line = context.getStart().getLine();
+
+        calculate(CalculationType.ADD);
+    }
+
+    @Override
+    public void exitMultiply(MKParser.MultiplyContext context) {
+        int line = context.getStart().getLine();
+
+        calculate(CalculationType.MUL);
+    }
+
+    @Override
+    public void exitDivide(MKParser.DivideContext context) {
+        int line = context.getStart().getLine();
+
+        calculate(CalculationType.DIV);
+    }
+
+    @Override
+    public void exitSubtract(MKParser.SubtractContext context) {
+        int line = context.getStart().getLine();
+
+        calculate(CalculationType.SUB);
+    }
+
+    private void calculate(CalculationType calculationType) {
+        ExplicitExpression rightExpression = expressionStack.pop();
+        ExplicitExpression leftExpression = expressionStack.pop();
+
+        ExplicitExpression result = generator.calculate(leftExpression, calculationType, rightExpression);
+        expressionStack.push(result);
+    }
+
+    @Override
     public void exitInt(MKParser.IntContext context) {
         line = context.getStart().getLine();
 
         Integer value = Integer.parseInt(context.INT().getText());
-        new ExplicitExpression(value, VariableType.INT);
+
+        ExplicitExpression explicitExpression = new ExplicitExpression(value, VariableType.INT);
+        expressionStack.push(explicitExpression);
     }
 
     @Override
@@ -97,7 +95,9 @@ public class LLVMActions extends MKBaseListener {
         line = context.getStart().getLine();
 
         Double value = Double.parseDouble(context.REAL().getText());
-        new ExplicitExpression(value, VariableType.REAL);
+
+        ExplicitExpression explicitExpression = new ExplicitExpression(value, VariableType.REAL);
+        expressionStack.push(explicitExpression);
     }
 
     @Override
@@ -105,7 +105,9 @@ public class LLVMActions extends MKBaseListener {
         line = context.getStart().getLine();
 
         String value = context.STR().getText();
-        new ExplicitExpression(value, VariableType.STR);
+
+        ExplicitExpression explicitExpression = new ExplicitExpression(value, VariableType.STR);
+        expressionStack.push(explicitExpression);
     }
 
     @Override
@@ -116,7 +118,8 @@ public class LLVMActions extends MKBaseListener {
 
         if (globalVariables.containsKey(name)) {
             Variable variable = globalVariables.get(name);
-            new ExplicitExpression(variable);
+            ExplicitExpression explicitExpression = new ExplicitExpression(variable);
+            expressionStack.push(explicitExpression);
         } else {
 
         }
@@ -134,7 +137,9 @@ public class LLVMActions extends MKBaseListener {
             type = VariableType.NONE;
         } else {
             ExplicitExpression explicitExpression = expressionStack.pop();
-            value = explicitExpression.getValue();
+            if (explicitExpression.getVariable() == null)
+                value = explicitExpression.getValue();
+            else value = explicitExpression.getVariable();
             type = explicitExpression.getType();
         }
 
@@ -168,8 +173,10 @@ public class LLVMActions extends MKBaseListener {
     public void exitPrint(MKParser.PrintContext context) {
         line = context.getStart().getLine();
 
-        String name = context.NAME().getText();
-
+        String name = null;
+        if (context.NAME() != null) {
+            name = context.NAME().getText();
+        }
         Variable variable = null;
         Object object = null;
         VariableType type = VariableType.NONE;
@@ -217,34 +224,28 @@ public class LLVMActions extends MKBaseListener {
     @Override
     public void exitScan_int(MKParser.Scan_intContext context) {
         line = context.getStart().getLine();
-
         String name = context.NAME().getText();
 
-        if (globalVariables.containsKey(name)) {
-            Variable variable = globalVariables.get(name);
-
-            changeType(variable, VariableType.INT);
-
-            generator.scanInt(variable);
-        } else {
-            printError("getting non-existing lady " + name + " to hear");
-        }
+        scan(name, VariableType.INT);
     }
 
     @Override
     public void exitScan_real(MKParser.Scan_realContext context) {
         line = context.getStart().getLine();
-
         String name = context.NAME().getText();
 
-        if (globalVariables.containsKey(name)) {
-            Variable variable = globalVariables.get(name);
+        scan(name, VariableType.REAL);
+    }
 
-            changeType(variable, VariableType.REAL);
+    private void scan(String variableName, VariableType goalType) {
+        if (globalVariables.containsKey(variableName)) {
+            Variable variable = globalVariables.get(variableName);
 
-            generator.scanReal(variable);
+            changeType(variable, goalType);
+
+            generator.scan(variable);
         } else {
-            printError("getting non-existing lady " + name + " to hear");
+            printError("getting non-existing lady " + variableName + " to hear");
         }
     }
 

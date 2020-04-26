@@ -12,12 +12,12 @@ variable_declaration    : DECLAREVARIABLE NAME (ASSIGN expression)?;
 variable_assignment     : NAME ASSIGN expression;
 
 expression              : expression1                       #single1
-                          | expression1 ADD expression      #add
-                          | expression1 SUB expression      #subtract
+                          | expression ADD expression1      #add
+                          | expression SUB expression1      #subtract
                           ;
 expression1             : expression2                       #single2
-                          | expression2 MUL expression1     #multiply
-                          | expression2 DIV expression1     #divide
+                          | expression1 MUL expression2     #multiply
+                          | expression1 DIV expression2     #divide
                           ;
 expression2             : bracket_expression                #bracket
                           | NAME                            #name

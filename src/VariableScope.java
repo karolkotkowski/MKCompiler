@@ -1,3 +1,3 @@
 public enum VariableScope {
-    GLOBAL, LOCAL
+    GLOBAL, LOCAL, CALC
 }

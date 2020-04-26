@@ -1,17 +1,6 @@
-lady a = 5;
-a = 10.17;
-whisper a;
-
-lady b = 12.55;
-b = 3;
-whisper b;
-
-hear int a;
-whisper a;
-
-hear real a;
-whisper a;
-
+lady a = 1.5 + 2;
+lady b = a + 3;
 lady c;
 hear real c;
-whisper c;
+lady d = c + b;
+whisper d;
