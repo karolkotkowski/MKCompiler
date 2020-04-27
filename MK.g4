@@ -28,7 +28,7 @@ expression2             : bracket_expression                #bracket
                           ;
 bracket_expression      : OPENBRACKET expression CLOSEBRACKET;
 
-print                   : PRINT (NAME | expression);
+print                   : PRINT expression;
 
 scan                    : SCAN INTSTATEMENT NAME            #scan_int
                           | SCAN REALSTATEMENT NAME         #scan_real

@@ -1,19 +1,19 @@
+import javafx.beans.binding.ObjectExpression;
+
 import java.util.HashMap;
 
 public class LLVMGenerator {
 
-    private HashMap<String, Variable> globalVariables;
+    private HashMap<String, GlobalVarExpression> globalVariables;
     private StringBuilder headerText = new StringBuilder();
     private StringBuilder bodyText = new StringBuilder();
-    private int printableIndex = 0;
-    private int scannableIndex = 0;
     private int varIndex = 1;
     private LLVMActions actions;
 
     private Configuration configuration = new Configuration();
     private HashMap<String, String>  systemVariables = configuration.getSystemVariables();
 
-    public LLVMGenerator (LLVMActions actions, HashMap<String, Variable> globalVariables) {
+    public LLVMGenerator (LLVMActions actions, HashMap<String, GlobalVarExpression> globalVariables) {
         this.actions = actions;
         this.globalVariables = globalVariables;
     }
@@ -35,121 +35,197 @@ public class LLVMGenerator {
         System.out.println(text.toString());
     }
 
-    public void declareVariable(Variable variable) {
-        VariableScope scope = variable.getScope();
-        VariableType variableType = variable.getType();
-        String name = variable.getName();
-        Object value = variable.getValue();
-        int memoryIndex = variable.getMemoryIndex();
+    public void declareVariable(Expression expression) {
+        Class expressionClass = expression.getClass();
+        ObjectType objectType = expression.getObjectType();
+        DataType dataType = expression.getDataType();
+        String name = null;
+        int index = 0;
 
-        switch (variableType) {
-            case INT:
-                switch (scope) {
-                    case GLOBAL:
-                        headerText.append("@var_" + name + memoryIndex + " = global i32 0\n");
-                        break;
+        switch (objectType) {
+            case VARIABLE:
+                if (expressionClass.equals(GlobalVarExpression.class)) {
+                    name = ((GlobalVarExpression) expression).getName();
+                    index = ((GlobalVarExpression) expression).getIndex();
+
+                    if (globalVariables.containsKey(name) && index == 0)
+                        actions.printError("declaring already exisiting lady " + name);
+                    globalVariables.put(name, (GlobalVarExpression) expression);
+
+                    if (index > 0 || dataType == DataType.NONE) {
+                        switch (dataType) {
+                            case NONE:
+                            case INT:
+                                headerText.append("@var_" + name + index + " = global i32 0\n");
+                                break;
+                            case REAL:
+                                headerText.append("@var_" + name + index + " = global double 0.0\n");
+                                break;
+                            case CHAR:
+                                break;
+                        }
+                    }
                 }
                 break;
-            case REAL:
-                switch (scope) {
-                    case GLOBAL:
-                        headerText.append("@var_" + name + memoryIndex + " = global double 0.0\n");
-                        break;
-                }
+            case CONSTANT:
                 break;
-            case STR:
-                String string = (String) value;
-                int stringLength = string.length();
-                String irStringSize = "[" + (stringLength+2) + " x i8]";
-                headerText.append("@var_" + name + memoryIndex + " = constant" + irStringSize + " c\"" + string + "\\0A\\00\"\n");
+            case ARRAY:
                 break;
-            case NONE:
-                switch (scope) {
-                    case GLOBAL:
-                        headerText.append("@var_" + name + memoryIndex + " = global i32 0\n");
-                        break;
-                }
+            case ARRAY_ELEMENT:
+                actions.printError("declaring array element not permitted");
                 break;
         }
     }
 
-    public void assignVariable(Variable variable) {
-        VariableScope scope = variable.getScope();
-        VariableType type = variable.getType();
-        String name = variable.getName();
-        Object value = variable.getValue();
-        int memoryIndex = variable.getMemoryIndex();
+    public void assignVariable(Expression leftExpression, Expression rightExpression) {
+        Class leftExpressionClass = leftExpression.getClass();
+        ObjectType leftObjectType = leftExpression.getObjectType();
+        String leftName = null;
+        int leftIndex = 0;
+        String leftFullName = null;
 
+        Class rightExpressionClass = rightExpression.getClass();
+        ObjectType rightObjectType = rightExpression.getObjectType();
+        DataType rightDataType = rightExpression.getDataType();
+        String rightName = null;
+        int rightIndex = 0;
         String textValue = null;
-        if (value.getClass() == ExplicitExpression.class) {
-            textValue = "%" + ((ExplicitExpression) value).getName();
-        } else {
-            if (value.getClass() == Variable.class) {
-                switch (type) {
-                    case INT:
-                        bodyText.append("  %" + varIndex + " = load i32, i32* @var_" + ((Variable) value).getName() + ((Variable) value).getMemoryIndex() + "\n");
-                        break;
-                    case REAL:
-                        bodyText.append("  %" + varIndex + " = load double, double* @var_" + ((Variable) value).getName() + ((Variable) value).getMemoryIndex() + "\n");
-                        break;
-                }
-                textValue = "%" + (varIndex++);
-            }
-            else
-                textValue = value.toString();
-        }
-        switch (type) {
-            case INT:
-                switch (scope) {
-                    case GLOBAL:
-                        bodyText.append("  store i32 " + textValue + ", i32* @var_" + name + memoryIndex + "\n\n");
-                        break;
-                }
-                break;
-            case REAL:
-                switch (scope) {
-                    case GLOBAL:
-                        bodyText.append("  store double " + textValue + ", double* @var_" + name + memoryIndex + "\n\n");
-                }
-                break;
-            case STR:
 
+        switch (leftObjectType) {
+            case VARIABLE:
+                if (leftExpressionClass.equals(GlobalVarExpression.class)) {
+                    leftName = ((GlobalVarExpression) leftExpression).getName();
+                    //leftIndex = ((GlobalVarExpression) leftExpression).getIndex();
+                    if (globalVariables.containsKey(leftName)) {
+                        leftIndex = globalVariables.get(leftName).getIndex();
+                        leftIndex++;
+                        leftExpression = new GlobalVarExpression(rightObjectType, rightDataType, leftName, leftIndex);
+                        declareVariable(leftExpression);
+                        leftFullName = "@var_" + leftName + leftIndex;
+                    } else
+                        actions.printError("assigning to non-existing lady " + leftName);
+                } else {
+                    if (leftExpressionClass.equals(UnnamedVarExpression.class)) {
+                        leftIndex = ((UnnamedVarExpression) leftExpression).getIndex();
+                        leftFullName = "%" + leftIndex;
+                        switch(rightDataType) {
+                            case NONE:
+                            case INT:
+                                bodyText.append("  %" + leftIndex + " = alloca i32 \n");
+                                break;
+                            case REAL:
+                                bodyText.append("  %" + leftIndex + " = alloca double \n");
+                                break;
+                            case CHAR:
+                                break;
+                        }
+                    }
+                }
+                break;
+            case CONSTANT:
+                break;
+            case ARRAY:
+                break;
+            case ARRAY_ELEMENT:
+                break;
+        }
+
+        switch (rightObjectType) {
+            case VARIABLE:
+                if (rightExpressionClass.equals(GlobalVarExpression.class)) {
+                    rightName = ((GlobalVarExpression) rightExpression).getName();
+                    rightIndex = ((GlobalVarExpression) rightExpression).getIndex();
+                    if (!globalVariables.containsKey(rightName))
+                        actions.printError("assigning value from non-existing lady " + rightName);
+                    switch (rightDataType) {
+                        case NONE:
+                        case INT:
+                            bodyText.append("  %" + varIndex + " = load i32, i32* @var_" + rightName + rightIndex + "\n");
+                            bodyText.append("  store i32 %" + varIndex + ", i32* " + leftFullName + "\n\n");
+                            break;
+                        case REAL:
+                            bodyText.append("  %" + varIndex + " = load double, double* @var_" + rightName + rightIndex + "\n");
+                            bodyText.append("  store double %" + varIndex + ", double* " + leftFullName + "\n\n");
+                            break;
+                        case CHAR:
+                            break;
+                    }
+                    varIndex++;
+                } else {
+                    if (rightExpressionClass.equals(ValueExpression.class)) {
+                        textValue = ((ValueExpression) rightExpression).getValue().toString();
+                        switch (rightDataType) {
+                            case NONE:
+                            case INT:
+                                bodyText.append("  store i32 " + textValue + ", i32* " + leftFullName + "\n\n");
+                                break;
+                            case REAL:
+                                bodyText.append("  store double " + textValue + ", double* " + leftFullName + "\n\n");
+                                break;
+                            case CHAR:
+                                break;
+                        }
+                    } else {
+                        if (rightExpressionClass.equals(UnnamedVarExpression.class)) {
+                            rightIndex = ((UnnamedVarExpression) rightExpression).getIndex();
+                            switch (rightDataType) {
+                                case NONE:
+                                case INT:
+                                    bodyText.append("  store i32 %" + rightIndex + ", i32* " + leftFullName + "\n\n");
+                                    break;
+                                case REAL:
+                                    bodyText.append("  store double %" + rightIndex + ", double* " + leftFullName + "\n\n");
+                                    break;
+                                case CHAR:
+                                    break;
+                            }
+                        }
+                    }
+                }
+                break;
+            case CONSTANT:
+                break;
+            case ARRAY:
+                break;
+            case ARRAY_ELEMENT:
                 break;
         }
     }
 
-    public ExplicitExpression calculate(ExplicitExpression leftExpression, CalculationType calculationType, ExplicitExpression rightExpression) {
-        leftExpression = makeCalculable(leftExpression);
-        rightExpression = makeCalculable(rightExpression);
+    public UnnamedVarExpression calculate(Expression leftExpression, CalculationType calculationType, Expression rightExpression) {
+        leftExpression = allocate(leftExpression);
+        rightExpression = allocate(rightExpression);
 
-        VariableType leftType = leftExpression.getType();
-        VariableType rightType = rightExpression.getType();
+        DataType leftType = leftExpression.getDataType();
+        DataType rightType = rightExpression.getDataType();
 
         boolean realCalculation = false;
-        if (leftType == VariableType.REAL || rightType == VariableType.REAL || calculationType == CalculationType.DIV) {
+        if (leftType == DataType.REAL || rightType == DataType.REAL || calculationType == CalculationType.DIV) {
             realCalculation = true;
-            if (leftType != VariableType.REAL) leftExpression = cast(leftExpression, VariableType.REAL);
-            if (rightType != VariableType.REAL) rightExpression = cast(rightExpression, VariableType.REAL);
+            if (leftType != DataType.REAL) leftExpression = cast((UnnamedVarExpression) leftExpression, DataType.REAL);
+            if (rightType != DataType.REAL) rightExpression = cast((UnnamedVarExpression) rightExpression, DataType.REAL);
         }
 
-        String leftIndex = leftExpression.getName();
-        String righIndex = rightExpression.getName();
+        int leftIndex = ((UnnamedVarExpression) leftExpression).getIndex();
+        int rightIndex = ((UnnamedVarExpression) rightExpression).getIndex();
 
-        ExplicitExpression result = null;
+        UnnamedVarExpression result = null;
         int resultIndex = varIndex;
+        varIndex++;
 
         if (realCalculation) {
             bodyText.append("  %" + resultIndex + " = alloca double \n");
 
-            bodyText.append("  %" + (varIndex++ + 1) + " = load double, double* %" + leftIndex + "\n");
-            bodyText.append("  %" + (varIndex++ + 1) + " = load double, double* %" + righIndex + "\n");
+            bodyText.append("  %" + varIndex++ + " = load double, double* %" + leftIndex + "\n");
+            bodyText.append("  %" + varIndex++ + " = load double, double* %" + rightIndex + "\n");
 
         } else {
             bodyText.append("  %" + resultIndex + " = alloca i32 \n");
 
-            bodyText.append("  %" + (varIndex++ + 1) + " = load i32, i32* %" + leftIndex + "\n");
-            bodyText.append("  %" + (varIndex++ + 1) + " = load i32, i32* %" + righIndex + "\n");
+            bodyText.append("  %" + varIndex++ + " = load i32, i32* %" + leftIndex + "\n");
+            bodyText.append("  %" + varIndex++ + " = load i32, i32* %" + rightIndex + "\n");
         }
+        varIndex--;
 
         if (realCalculation) {
             switch (calculationType) {
@@ -166,7 +242,7 @@ public class LLVMGenerator {
                     bodyText.append("  %" + (varIndex++ + 1) + " = fdiv double %" + (varIndex - 2) + ", %" + (varIndex - 1) + "\n\n");
                     break;
             }
-            result = new ExplicitExpression(new String("" + varIndex), VariableType.REAL);
+            result = new UnnamedVarExpression(ObjectType.VARIABLE, DataType.REAL, varIndex);
         } else {
             switch (calculationType) {
                 case ADD:
@@ -179,70 +255,97 @@ public class LLVMGenerator {
                     bodyText.append("  %" + (varIndex++ + 1) + " = mul nsw i32 %" + (varIndex - 2) + ", %" + (varIndex - 1) + "\n");
                     break;
             }
-            bodyText.append("  store i32 %" + varIndex + ", i32* %" + resultIndex + "\n");
-            bodyText.append("  %" + (varIndex++ + 1) + " = load i32, i32* %" + resultIndex + "\n\n");
-            result = new ExplicitExpression(new String("" + varIndex), VariableType.INT);
+            bodyText.append("  store i32 %" + varIndex++ + ", i32* %" + resultIndex + "\n");
+            bodyText.append("  %" + (varIndex) + " = load i32, i32* %" + resultIndex + "\n\n");
+            result = new UnnamedVarExpression(ObjectType.VARIABLE, DataType.INT, varIndex);
         }
 
         varIndex++;
         return result;
     }
 
-    private ExplicitExpression makeCalculable(ExplicitExpression expression) {
-        VariableType type = expression.getType();
-        Variable variable = expression.getVariable();
+    private UnnamedVarExpression allocate(Expression expression) {
+        ObjectType objectType = expression.getObjectType();
+        Object expressionClass = expression.getClass();
+        DataType dataType = expression.getDataType();
+        String name = null;
+        int index = 0;
+        String fullName = null;
         String textValue = null;
 
-        String name = null;
-        int memoryIndex = 0;
-        if (variable != null) {
-            name = variable.getName();
-            memoryIndex = variable.getMemoryIndex();
-        } else {
-            textValue = expression.getValue().toString();
-        }
-
         int resultIndex = varIndex;
+        varIndex++;
 
-        switch(type) {
+        switch (dataType) {
+            case NONE:
             case INT:
                 bodyText.append("  %" + resultIndex + " = alloca i32 \n");
-                if (variable == null) {
-                    if (expression.isCalculable()) {
-                        bodyText.append("  store i32 %" + expression.getName() + ", i32* %" + resultIndex + "\n\n");
-                    } else {
-                        bodyText.append("  store i32 " + textValue + ", i32* %" + resultIndex + "\n\n");
-                    }
-                } else {
-                    varIndex++;
-                    bodyText.append("  %" + varIndex + " = load i32, i32* @var_" + name + memoryIndex + "\n");
-                    bodyText.append("  store i32 %" + varIndex + ", i32* %" + resultIndex + "\n\n");
-                }
                 break;
             case REAL:
                 bodyText.append("  %" + resultIndex + " = alloca double \n");
-                if (variable == null) {
-                    if (expression.isCalculable()) {
-                        bodyText.append("  store double %" + expression.getName() + ", double* %" + resultIndex + "\n\n");
-                    } else {
-                        bodyText.append("  store double " + textValue + ", double* %" + resultIndex + "\n\n");
-                    }
-                } else {
-                    varIndex++;
-                    bodyText.append("  %" + varIndex + " = load double, double* @var_" + name + memoryIndex + "\n");
-                    bodyText.append("  store double %" + varIndex + ", double* %" + resultIndex + "\n\n");
-                }
+                break;
+            case CHAR:
                 break;
         }
-        varIndex++;
 
-        return new ExplicitExpression(new String("" + resultIndex), type);
+        switch (objectType) {
+            case VARIABLE:
+                if (expressionClass.equals(GlobalVarExpression.class)) {
+                    name = ((GlobalVarExpression) expression).getName();
+                    index = ((GlobalVarExpression) expression).getIndex();
+                    fullName = "@var_" + name + index;
+                    textValue = "%" + varIndex;
+                    if (!globalVariables.containsKey(name))
+                        actions.printError("using non-existing lady " + name);
+                    switch (dataType) {
+                        case NONE:
+                        case INT:
+                            bodyText.append("  %" + varIndex + " = load i32, i32* " + fullName + "\n");
+                            break;
+                        case REAL:
+                            bodyText.append("  %" + varIndex + " = load double, double* " + fullName + "\n");
+                            break;
+                        case CHAR:
+                            break;
+                    }
+                    varIndex++;
+                } else {
+                    if (expressionClass.equals(ValueExpression.class)) {
+                        textValue = ((ValueExpression) expression).getValue().toString();
+                    } else {
+                        if (expressionClass.equals(UnnamedVarExpression.class)) {
+                            index = ((UnnamedVarExpression) expression).getIndex();
+                            textValue = "%" + index;
+                        }
+                    }
+                }
+                break;
+            case CONSTANT:
+                break;
+            case ARRAY:
+                break;
+            case ARRAY_ELEMENT:
+                break;
+        }
+
+        switch (dataType) {
+            case NONE:
+            case INT:
+                bodyText.append("  store i32 " + textValue + ", i32* %" + resultIndex + "\n\n");
+                break;
+            case REAL:
+                bodyText.append("  store double " + textValue + ", double* %" + resultIndex + "\n\n");
+                break;
+            case CHAR:
+                break;
+        }
+
+        return new UnnamedVarExpression(ObjectType.VARIABLE, dataType, resultIndex);
     }
 
-    private ExplicitExpression cast(ExplicitExpression explicitExpression, VariableType newType) {
-        VariableType previousType = explicitExpression.getType();
-        String name = explicitExpression.getName();
-        String castedIndex = explicitExpression.getName();
+    private UnnamedVarExpression cast(UnnamedVarExpression expression, DataType newType) {
+        DataType previousType = expression.getDataType();
+        int index = expression.getIndex();
 
         int resultIndex = varIndex++;
 
@@ -254,108 +357,88 @@ public class LLVMGenerator {
                 bodyText.append("  %" + resultIndex + " = alloca double \n");
                 switch (previousType) {
                     case INT:
-                        bodyText.append("  %" + (varIndex++) + " = load i32, i32* %" + name + "\n");
+                        bodyText.append("  %" + (varIndex++) + " = load i32, i32* %" + index + "\n");
                         bodyText.append("  %" + (varIndex++) + " = sitofp i32 %" + (varIndex - 2) + " to double \n");
                         bodyText.append("  store double %" + (varIndex - 1) + ", double* %" + resultIndex + "\n\n");
                         break;
                 }
                 break;
-            case STR:
-
-                break;
         }
 
-        return new ExplicitExpression(("" + resultIndex), newType);
+        return new UnnamedVarExpression(ObjectType.VARIABLE, newType, resultIndex);
     }
 
-    public void printStr(String string) {
+    public void print(Expression expression) {
+        ObjectType objectType = expression.getObjectType();
+        Object expressionClass = expression.getClass();
+        DataType dataType = expression.getDataType();
+
+        int memoryIndex = varIndex;
+        UnnamedVarExpression leftExpression = new UnnamedVarExpression(objectType, dataType, memoryIndex);
+        varIndex++;
+        assignVariable(leftExpression, expression);
+
+        switch (objectType) {
+            case VARIABLE:
+                switch (dataType) {
+                    case NONE:
+                    case INT:
+                        bodyText.append("  %" + varIndex + " = load i32, i32* %" + memoryIndex + "\n");
+                        varIndex++;
+                        bodyText.append("  %" + varIndex + " = call i32 (i8* , ...) @printf(i8* getelementptr inbounds ([4 x i8], [4 x i8]*" + systemVariables.get("printInt") + ", i32 0, i32 0), i32 %" + (varIndex - 1) + ")\n\n");
+                        break;
+                    case REAL:
+                        bodyText.append("  %" + varIndex + " = load double, double* %" + memoryIndex + "\n");
+                        varIndex++;
+                        bodyText.append("  %" + varIndex + " = call i32 (i8* , ...) @printf(i8* getelementptr inbounds ([4 x i8], [4 x i8]*" + systemVariables.get("printReal") + ", i32 0, i32 0), double %" + (varIndex - 1) + ")\n\n");
+                        break;
+                    case CHAR:
+                        break;
+                }
+                break;
+            case CONSTANT:
+                break;
+            case ARRAY:
+                break;
+            case ARRAY_ELEMENT:
+                break;
+        }
+        varIndex++;
+    }
+
+    /*public void printStr(String string) {
         int stringLength = string.length();
         String irStringSize = "[" + (stringLength + 2) + " x i8]";
         headerText.append(systemVariables.get("printValue") + printableIndex + " = constant" + irStringSize + " c\"" + string + "\\0A\\00\"\n");
         bodyText.append("  call i32 (i8*, ...) @printf(i8* getelementptr inbounds ( " + irStringSize + ", " + irStringSize + "* " + systemVariables.get("printValue") + printableIndex + ", i32 0, i32 0))\n\n");
         printableIndex++;
     }
+    */
 
-    public void printStr(Variable variable) {
-        VariableScope scope = variable.getScope();
-        String name = variable.getName();
-        String string = (String) variable.getValue();
-        int memoryIndex = variable.getMemoryIndex();
+    public void scan(DataType dataType, Expression expression) {
+        Object expressionClass = expression.getClass();
 
-        int stringLength = string.length();
-        String irStringSize = "[" + (stringLength + 2) + " x i8]";
-        switch (scope) {
-            case GLOBAL:
-                if (globalVariables.containsKey(name)) {
-                    bodyText.append("  call i32 (i8*, ...) @printf(i8* getelementptr inbounds ( " + irStringSize + ", " + irStringSize + "* @var_" + name + memoryIndex + ", i32 0, i32 0))\n\n");
-                }
-                break;
+        if (expressionClass.equals(GlobalVarExpression.class)) {
+            String name = ((GlobalVarExpression) expression).getName();
+            int index = ((GlobalVarExpression) expression).getIndex() + 1;
+            String fullName = "@var_" + name + index;
+            GlobalVarExpression globalVarExpression = new GlobalVarExpression(ObjectType.VARIABLE, dataType, name, index);
+            globalVariables.put(name, globalVarExpression);
+
+            switch (dataType) {
+                case INT:
+                    headerText.append(fullName + " = global i32 0");
+                    bodyText.append("  %" + varIndex + " = call i32 (i8*, ...) @scanf(i8* getelementptr inbounds ([3 x i8], [3 x i8]* " + systemVariables.get("scanInt") + ", i32 0, i32 0), i32* " + fullName + ")\n\n");
+                    break;
+                case REAL:
+                    headerText.append(fullName + " = global double 0.0");
+                    bodyText.append("  %" + varIndex + " = call i32 (i8*, ...) @scanf(i8* getelementptr inbounds ([4 x i8], [4 x i8]* " + systemVariables.get("scanReal") + ", i32 0, i32 0), double* " + fullName + ")\n\n");
+                    break;
+                case CHAR:
+                    break;
+            }
         }
-    }
-
-    public void printInt(String text) {
-        printStr(text);
-    }
-
-    public void printInt(Variable variable) {
-        VariableScope scope = variable.getScope();
-        String name = variable.getName();
-        int memoryIndex = variable.getMemoryIndex();
-
-        switch (scope) {
-            case GLOBAL:
-                bodyText.append("  %printable" + printableIndex + " = load i32, i32* @var_" + name + memoryIndex + "\n");
-                break;
-        }
-        printableIndex++;
-
-        bodyText.append("  %printable" + printableIndex + " = call i32 (i8* , ...) @printf(i8* getelementptr inbounds ([4 x i8], [4 x i8]*" + systemVariables.get("printInt") + ", i32 0, i32 0), i32 %printable" + (printableIndex - 1) + ")\n\n");
-        printableIndex++;
-    }
-
-    public void printReal(String text) {
-        printStr(text);
-    }
-
-    public void printReal(Variable variable) {
-        VariableScope scope = variable.getScope();
-        String name = variable.getName();
-        int memoryIndex = variable.getMemoryIndex();
-
-        switch (scope) {
-            case GLOBAL:
-                bodyText.append("  %printable" + printableIndex + " = load double, double* @var_" + name + memoryIndex + "\n");
-                break;
-        }
-        printableIndex++;
-
-        bodyText.append("  %printable" + printableIndex + " = call i32 (i8* , ...) @printf(i8* getelementptr inbounds ([4 x i8], [4 x i8]*" + systemVariables.get("printReal") + ", i32 0, i32 0), double %printable" + (printableIndex - 1) + ")\n\n");
-        printableIndex++;
-    }
-
-    public void scan(Variable variable) {
-        VariableScope scope = variable.getScope();
-        VariableType type = variable.getType();
-        String name = variable.getName();
-        int memoryIndex = variable.getMemoryIndex();
-
-        switch (type) {
-            case INT:
-                switch (scope) {
-                    case GLOBAL:
-                        bodyText.append("  %scannable" + scannableIndex + " = call i32 (i8*, ...) @scanf(i8* getelementptr inbounds ([3 x i8], [3 x i8]* " + systemVariables.get("scanInt") + ", i32 0, i32 0), i32* @var_" + name + memoryIndex + ")\n\n");
-                        break;
-                }
-                break;
-            case REAL:
-                switch (scope) {
-                    case GLOBAL:
-                        bodyText.append("  %scannable" + scannableIndex + " = call i32 (i8*, ...) @scanf(i8* getelementptr inbounds ([4 x i8], [4 x i8]* " + systemVariables.get("scanReal") + ", i32 0, i32 0), double* @var_" + name + memoryIndex + ")\n\n");
-                        break;
-                }
-                break;
-        }
-        scannableIndex++;
+        varIndex++;
     }
 
 

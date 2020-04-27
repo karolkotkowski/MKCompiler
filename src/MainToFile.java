@@ -4,12 +4,12 @@ import org.antlr.v4.runtime.tree.ParseTree;
 import org.antlr.v4.runtime.tree.ParseTreeWalker;
 
 import java.io.*;
-import java.util.Stack;
-import java.util.stream.Stream;
 
-public class MainToConsole {
+public class MainToFile {
     public static void main(String[] args) throws Exception {
         String fileFrom = "test.mk";
+        String fileTo = "test.ll";
+        System.setOut(new PrintStream(new BufferedOutputStream(new FileOutputStream(fileTo)), true));
 
         String errFile = "err";
         System.setErr(new PrintStream(new BufferedOutputStream(new FileOutputStream(errFile)), true));
@@ -40,5 +40,6 @@ public class MainToConsole {
         }
 
         walker.walk(new LLVMActions(fileFrom), tree);
+
     }
 }

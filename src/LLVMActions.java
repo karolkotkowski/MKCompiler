@@ -2,46 +2,15 @@ import java.util.HashMap;
 import java.util.Stack;
 
 public class LLVMActions extends MKBaseListener {
-    private HashMap<String, Variable> globalVariables = new HashMap<String, Variable>();
+    private HashMap<String, GlobalVarExpression> globalVariables = new HashMap<String, GlobalVarExpression>();
     private LLVMGenerator generator = new LLVMGenerator(this, globalVariables);
-    private Stack<ExplicitExpression> expressionStack = new Stack<ExplicitExpression>();
+    private Stack<Expression> expressionStack = new Stack<Expression>();
     private Configuration configuration = new Configuration();
     private int line = 0;
     private String fileName;
 
     public LLVMActions(String fileName) {
         this.fileName = fileName;
-    }
-
-    private void assignVariable(Variable variable) {
-        VariableScope scope = variable.getScope();
-        String name = variable.getName();
-        switch (scope) {
-            case GLOBAL:
-                globalVariables.put(name, variable);
-                generator.assignVariable(variable);
-                break;
-        }
-    }
-
-    private void declareVariable(Variable variable) {
-        String name = variable.getName();
-        VariableScope scope = variable.getScope();
-        VariableType type = variable.getType();
-
-        switch (scope) {
-            case GLOBAL:
-                if (globalVariables.containsKey(name)) {
-                    printError("declaring already existing lady " + name);
-                } else {
-                    globalVariables.put(name, variable);
-                    generator.declareVariable(variable);
-                    if (type != VariableType.NONE && type != VariableType.STR) {
-                        generator.assignVariable(variable);
-                    }
-                }
-                break;
-        }
     }
 
     @Override
@@ -73,10 +42,10 @@ public class LLVMActions extends MKBaseListener {
     }
 
     private void calculate(CalculationType calculationType) {
-        ExplicitExpression rightExpression = expressionStack.pop();
-        ExplicitExpression leftExpression = expressionStack.pop();
+        Expression rightExpression = expressionStack.pop();
+        Expression leftExpression = expressionStack.pop();
 
-        ExplicitExpression result = generator.calculate(leftExpression, calculationType, rightExpression);
+        UnnamedVarExpression result = generator.calculate(leftExpression, calculationType, rightExpression);
         expressionStack.push(result);
     }
 
@@ -86,8 +55,8 @@ public class LLVMActions extends MKBaseListener {
 
         Integer value = Integer.parseInt(context.INT().getText());
 
-        ExplicitExpression explicitExpression = new ExplicitExpression(value, VariableType.INT);
-        expressionStack.push(explicitExpression);
+        ValueExpression expression = new ValueExpression(ObjectType.VARIABLE, DataType.INT, value);
+        expressionStack.push(expression);
     }
 
     @Override
@@ -96,19 +65,19 @@ public class LLVMActions extends MKBaseListener {
 
         Double value = Double.parseDouble(context.REAL().getText());
 
-        ExplicitExpression explicitExpression = new ExplicitExpression(value, VariableType.REAL);
-        expressionStack.push(explicitExpression);
+        ValueExpression expression = new ValueExpression(ObjectType.VARIABLE, DataType.REAL, value);
+        expressionStack.push(expression);
     }
 
-    @Override
+    /*@Override
     public void exitStr(MKParser.StrContext context) {
         line = context.getStart().getLine();
 
         String value = context.STR().getText();
 
-        ExplicitExpression explicitExpression = new ExplicitExpression(value, VariableType.STR);
-        expressionStack.push(explicitExpression);
-    }
+        ValueExpression expression = new ValueExpression(ObjectType.VARIABLE, DataType.STR, value);
+        expressionStack.push(expression);
+    }*/
 
     @Override
     public void exitName(MKParser.NameContext context) {
@@ -116,13 +85,14 @@ public class LLVMActions extends MKBaseListener {
 
         String name = context.NAME().getText();
 
+        Expression expression = null;
         if (globalVariables.containsKey(name)) {
-            Variable variable = globalVariables.get(name);
-            ExplicitExpression explicitExpression = new ExplicitExpression(variable);
-            expressionStack.push(explicitExpression);
+            expression = globalVariables.get(name);
         } else {
-
+            printError("using non-existing lady " + name);
         }
+
+        expressionStack.push(expression);
     }
 
     @Override
@@ -130,21 +100,21 @@ public class LLVMActions extends MKBaseListener {
         line = context.getStart().getLine();
 
         String name = context.NAME().getText();
-        Object value = null;
-        VariableType type = null;
+        ObjectType objectType = ObjectType.VARIABLE;
 
         if (context.ASSIGN() == null) {
-            type = VariableType.NONE;
+            generator.declareVariable(new GlobalVarExpression(objectType, DataType.NONE, name, 0));
         } else {
-            ExplicitExpression explicitExpression = expressionStack.pop();
-            if (explicitExpression.getVariable() == null)
-                value = explicitExpression.getValue();
-            else value = explicitExpression.getVariable();
-            type = explicitExpression.getType();
+            Expression rightExpression = expressionStack.pop();
+            DataType dataType = rightExpression.getDataType();
+
+            GlobalVarExpression leftExpression = new GlobalVarExpression(objectType, dataType, name, 0);
+            generator.declareVariable(leftExpression);
+
+            generator.assignVariable(leftExpression, rightExpression);
         }
 
-        Variable variable = new Variable(VariableScope.GLOBAL, type, name, value);
-        declareVariable(variable);
+
     }
 
     @Override
@@ -153,72 +123,18 @@ public class LLVMActions extends MKBaseListener {
 
         String name = context.NAME().getText();
 
-        ExplicitExpression explicitExpression = expressionStack.pop();
-        Object value = explicitExpression.getValue();
-        VariableType type = explicitExpression.getType();
+        Expression rightExpression = expressionStack.pop();
+        GlobalVarExpression leftExpression = new GlobalVarExpression(ObjectType.VARIABLE, DataType.NONE, name, 0);
 
-        if (globalVariables.containsKey(name)) {
-            Variable variable = globalVariables.get(name);
-
-            changeType(variable, type);
-            variable.setValue(value);
-
-            assignVariable(variable);
-        } else {
-            printError("assigning to non-existing lady " + name);
-        }
+        generator.assignVariable(leftExpression, rightExpression);
     }
 
     @Override
     public void exitPrint(MKParser.PrintContext context) {
         line = context.getStart().getLine();
 
-        String name = null;
-        if (context.NAME() != null) {
-            name = context.NAME().getText();
-        }
-        Variable variable = null;
-        Object object = null;
-        VariableType type = VariableType.NONE;
-
-        if (name == null) {
-            ExplicitExpression explicitExpression = expressionStack.pop();
-            variable = explicitExpression.getVariable();
-            object = explicitExpression.getValue();
-            type = explicitExpression.getType();
-        } else {
-            if (globalVariables.containsKey(name)) {
-                variable = globalVariables.get(name);
-                object = variable.getValue();
-                type = variable.getType();
-            } else {
-                printError("printing non-existing lady " + name);
-            }
-        }
-
-        switch (type) {
-            case INT:
-                if (variable == null) {
-                    generator.printInt(object.toString());
-                } else {
-                    generator.printInt(variable);
-                }
-                break;
-            case REAL:
-                if (variable == null) {
-                    generator.printReal(object.toString());
-                } else {
-                    generator.printReal(variable);
-                }
-                break;
-            case STR:
-                if (variable == null) {
-                    generator.printStr((String) object);
-                } else {
-                    generator.printStr(variable);
-                }
-                break;
-        }
+        Expression expression = expressionStack.pop();
+        generator.print(expression);
     }
 
     @Override
@@ -226,7 +142,7 @@ public class LLVMActions extends MKBaseListener {
         line = context.getStart().getLine();
         String name = context.NAME().getText();
 
-        scan(name, VariableType.INT);
+        scan(DataType.INT, name);
     }
 
     @Override
@@ -234,19 +150,19 @@ public class LLVMActions extends MKBaseListener {
         line = context.getStart().getLine();
         String name = context.NAME().getText();
 
-        scan(name, VariableType.REAL);
+        scan(DataType.REAL, name);
     }
 
-    private void scan(String variableName, VariableType goalType) {
-        if (globalVariables.containsKey(variableName)) {
-            Variable variable = globalVariables.get(variableName);
+    private void scan(DataType dataType, String name) {
+        Expression expression = null;
 
-            changeType(variable, goalType);
-
-            generator.scan(variable);
+        if (globalVariables.containsKey(name)) {
+            expression = globalVariables.get(name);
         } else {
-            printError("getting non-existing lady " + variableName + " to hear");
+            printError("getting non-existing lady " + name + " to hear");
         }
+
+        generator.scan(dataType, (GlobalVarExpression) expression);
     }
 
     @Override
@@ -258,14 +174,8 @@ public class LLVMActions extends MKBaseListener {
 
 
     public void printError(String message) {
-        System.err.println("Error at line " + line + " - " + message + " in " + fileName);
+        System.err.println("Compilation error at line " + line + " - " + message + " in " + fileName);
         System.exit(1);
-    }
-
-    private void changeType(Variable variable, VariableType newType) {
-        variable.setType(newType);
-        variable.increaseMemoryIndex();
-        generator.declareVariable(variable);
     }
 }
 
