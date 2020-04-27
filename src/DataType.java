@@ -1,3 +1,3 @@
 public enum DataType {
-    NONE, INT, REAL, CHAR;
+    NONE, INT, REAL, CHAR, NUMERIC, LITERAL;
 }

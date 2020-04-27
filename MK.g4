@@ -4,7 +4,7 @@ file                    : (block | statement)+ EOF;
 
 block                   : OPENBLOCK statement+ CLOSEBLOCK;
 
-statement               : (variable_declaration | variable_assignment | command) ENDSTATEMENT;
+statement               : (variable_declaration | variable_assignment | command | array_declaration) ENDSTATEMENT;
 
 command                 : print | scan;
 
@@ -28,6 +28,10 @@ expression2             : bracket_expression                #bracket
                           ;
 bracket_expression      : OPENBRACKET expression CLOSEBRACKET;
 
+array_declaration       : NUMERIC DECLAREVARIABLE NAME OPENARRAY (INT)* CLOSEARRAY (ASSIGN array_elements)? #numeric_array_declaration
+                          ;
+array_elements          : OPENBLOCK expression (NEXTELEMENT expression)* CLOSEBLOCK;
+
 print                   : PRINT expression;
 
 scan                    : SCAN INTSTATEMENT NAME            #scan_int
@@ -36,11 +40,14 @@ scan                    : SCAN INTSTATEMENT NAME            #scan_int
                           ;
 
 ENDSTATEMENT            : ';';
+NEXTELEMENT             : ',';
 
 OPENBLOCK               : '{';
 CLOSEBLOCK              : '}';
 OPENBRACKET             : '(';
 CLOSEBRACKET            : ')';
+OPENARRAY               : '[';
+CLOSEARRAY              : ']';
 
 ASSIGN                  : '=';
 
@@ -53,6 +60,7 @@ INTSTATEMENT            : 'int';
 REALSTATEMENT           : 'real';
 STRSTATEMENT            : 'str';
 
+NUMERIC                 : 'num';
 
 NAME                    : [a-zA-Z] | [a-zA-Z][a-zA-Z0-9]+;
 

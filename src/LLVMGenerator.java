@@ -1,6 +1,9 @@
-import javafx.beans.binding.ObjectExpression;
 
+
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.Iterator;
+import java.util.List;
 
 public class LLVMGenerator {
 
@@ -49,7 +52,7 @@ public class LLVMGenerator {
                     index = ((GlobalVarExpression) expression).getIndex();
 
                     if (globalVariables.containsKey(name) && index == 0)
-                        actions.printError("declaring already exisiting lady " + name);
+                        actions.printError("declaring already existing lady " + name);
                     globalVariables.put(name, (GlobalVarExpression) expression);
 
                     if (index > 0 || dataType == DataType.NONE) {
@@ -68,11 +71,6 @@ public class LLVMGenerator {
                 }
                 break;
             case CONSTANT:
-                break;
-            case ARRAY:
-                break;
-            case ARRAY_ELEMENT:
-                actions.printError("declaring array element not permitted");
                 break;
         }
     }
@@ -191,6 +189,40 @@ public class LLVMGenerator {
                 break;
         }
     }
+
+    public void declareArray(Expression expression, List<Expression> expressionList) {
+        Class expressionClass = expression.getClass();
+        DataType dataType = expression.getDataType();
+        String name = null;
+
+        Expression elementExpression = null;
+        ObjectType elementObjectType = null;
+        DataType elementDataType = null;
+        Iterator<Expression> expressionIterator = expressionList.iterator();
+        while (expressionIterator.hasNext()) {
+            elementExpression = expressionIterator.next();
+            elementObjectType = elementExpression.getObjectType();
+            elementDataType = elementExpression.getDataType();
+
+            if (elementObjectType == ObjectType.ARRAY)
+                actions.printError("declaring array element as an array");
+            switch (dataType) {
+                case NUMERIC:
+                    if ()
+                    break;
+            }
+        }
+
+        if (expressionClass.equals(GlobalVarExpression.class)) {
+            name = ((GlobalVarExpression) expression).getName();
+            //index = ((GlobalVarExpression) expression).getIndex();
+
+            if (globalVariables.containsKey(name))
+                actions.printError("declaring already existing lady " + name);
+            globalVariables.put(name, (GlobalVarExpression) expression);
+
+
+        }
 
     public UnnamedVarExpression calculate(Expression leftExpression, CalculationType calculationType, Expression rightExpression) {
         leftExpression = allocate(leftExpression);
