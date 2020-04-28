@@ -140,6 +140,7 @@ public class LLVMGenerator {
                             leftFullName = "getelementptr inbounds ([" + arrayLength + " x i32], [" + arrayLength + " x i32]* " + arrayName + ", i64 0, i64 " + leftIndex + ")";
                             break;
                         case REAL:
+                            leftFullName = "getelementptr inbounds ([" + arrayLength + " x double], [" + arrayLength + " x double]* " + arrayName + ", i64 0, i64 " + leftIndex + ")";
                             break;
                         case CHAR:
                             break;
@@ -219,22 +220,21 @@ public class LLVMGenerator {
                     array = globalVariables.get(rightName);
                     arrayLength = ((GlobalVarExpression) array).getIndex();
 
-                    varIndex--;
                     arrayIndex = ((GlobalVarExpression) rightExpression).getLength();
                     bodyText.append("  %" + varIndex++ + " = load i32, i32* %" + ((UnnamedVarExpression) arrayIndex).getIndex() + " \n");
                     bodyText.append("  %" + varIndex++ + " = sext i32 %" + (varIndex - 2) + " to i64 \n");
 
                     switch (rightDataType) {
-                        case NONE:
                         case INT:
-                            rightFullName = "getelementptr inbounds ([" + arrayLength + " x i32], [" + arrayLength + " x i32]* @var_" + rightName + ", i64 0, i64 " + ((UnnamedVarExpression) arrayIndex).getIndex() + ")";
+                            rightFullName = "getelementptr inbounds [" + arrayLength + " x i32], [" + arrayLength + " x i32]* @var_" + rightName + ", i64 0, i64 %" + (varIndex - 1) + "";
                             bodyText.append("  %" + varIndex++ + " = " + rightFullName + "\n");
                             bodyText.append("  %" + varIndex + " = load i32, i32* %" + (varIndex - 1) + "\n");
                             bodyText.append("  store i32 %" + varIndex + ", i32* " + leftFullName + "\n\n");
                             break;
                         case REAL:
-                            //////////////////
-                            bodyText.append("  %" + varIndex + " = load double, double* @var_" + rightName + rightIndex + "\n");
+                            rightFullName = "getelementptr inbounds [" + arrayLength + " x double], [" + arrayLength + " x double]* @var_" + rightName + ", i64 0, i64 %" + (varIndex - 1) + "";
+                            bodyText.append("  %" + varIndex++ + " = " + rightFullName + "\n");
+                            bodyText.append("  %" + varIndex + " = load double, double* %" + (varIndex - 1) + "\n");
                             bodyText.append("  store double %" + varIndex + ", double* " + leftFullName + "\n\n");
                             break;
                         case CHAR:
@@ -262,6 +262,7 @@ public class LLVMGenerator {
                     headerText.append("@var_" + name + " = global [" + length + " x i32] zeroinitializer \n");
                     break;
                 case REAL:
+                    headerText.append("@var_" + name + " = global [" + length + " x double] zeroinitializer \n");
                     break;
                 case CHAR:
                     break;
@@ -458,40 +459,28 @@ public class LLVMGenerator {
     }
 
     public void print(Expression expression) {
-        ObjectType objectType = expression.getObjectType();
-        Object expressionClass = expression.getClass();
         DataType dataType = expression.getDataType();
 
         int memoryIndex = varIndex;
-        UnnamedVarExpression leftExpression = new UnnamedVarExpression(objectType, dataType, memoryIndex);
+        UnnamedVarExpression leftExpression = new UnnamedVarExpression(ObjectType.VARIABLE, dataType, memoryIndex);
         varIndex++;
         assignVariable(leftExpression, expression);
 
-        //switch (objectType) {
-            //case VARIABLE:
-                switch (dataType) {
-                    case NONE:
-                    case INT:
-                        bodyText.append("  %" + varIndex + " = load i32, i32* %" + memoryIndex + "\n");
-                        varIndex++;
-                        bodyText.append("  %" + varIndex + " = call i32 (i8* , ...) @printf(i8* getelementptr inbounds ([4 x i8], [4 x i8]*" + systemVariables.get("printInt") + ", i32 0, i32 0), i32 %" + (varIndex - 1) + ")\n\n");
-                        break;
-                    case REAL:
-                        bodyText.append("  %" + varIndex + " = load double, double* %" + memoryIndex + "\n");
-                        varIndex++;
-                        bodyText.append("  %" + varIndex + " = call i32 (i8* , ...) @printf(i8* getelementptr inbounds ([4 x i8], [4 x i8]*" + systemVariables.get("printReal") + ", i32 0, i32 0), double %" + (varIndex - 1) + ")\n\n");
-                        break;
-                    case CHAR:
-                        break;
-                }
-            /*    break;
-            case CONSTANT:
+        switch (dataType) {
+            case NONE:
+            case INT:
+                bodyText.append("  %" + varIndex + " = load i32, i32* %" + memoryIndex + "\n");
+                varIndex++;
+                bodyText.append("  %" + varIndex + " = call i32 (i8* , ...) @printf(i8* getelementptr inbounds ([4 x i8], [4 x i8]*" + systemVariables.get("printInt") + ", i32 0, i32 0), i32 %" + (varIndex - 1) + ")\n\n");
                 break;
-            case ARRAY:
+            case REAL:
+                bodyText.append("  %" + varIndex + " = load double, double* %" + memoryIndex + "\n");
+                varIndex++;
+                bodyText.append("  %" + varIndex + " = call i32 (i8* , ...) @printf(i8* getelementptr inbounds ([4 x i8], [4 x i8]*" + systemVariables.get("printReal") + ", i32 0, i32 0), double %" + (varIndex - 1) + ")\n\n");
                 break;
-            case ARRAY_ELEMENT:
-                break;*/
-        //}
+            case CHAR:
+                break;
+        }
         varIndex++;
     }
 

@@ -30,7 +30,7 @@ expression2             : bracket_expression                #bracket
 bracket_expression      : OPENBRACKET expression CLOSEBRACKET;
 
 array_declaration       : INTSTATEMENT array_declaration1       #int_array_declaration
-                          | REALSTATEMENT array_declaration1    #real_array_declarattion
+                          | REALSTATEMENT array_declaration1    #real_array_declaration
                           ;
 array_declaration1      : DECLAREVARIABLE NAME OPENARRAY (array_length)? CLOSEARRAY (ASSIGN array_elements)?;
 array_elements          : OPENBLOCK expression (NEXTELEMENT expression)* CLOSEBLOCK;

@@ -1,9 +1,6 @@
 import com.sun.javaws.jnl.RContentDesc;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Stack;
+import java.util.*;
 
 public class LLVMActions extends MKBaseListener {
     private HashMap<String, GlobalVarExpression> globalVariables = new HashMap<String, GlobalVarExpression>();
@@ -196,11 +193,21 @@ public class LLVMActions extends MKBaseListener {
         generator.scan(dataType, (GlobalVarExpression) expression);
     }
 
+    @Override
     public void exitInt_array_declaration(MKParser.Int_array_declarationContext context) {
         line = context.getStart().getLine();
         DataType dataType = DataType.INT;
         MKParser.Array_declaration1Context context1 = context.getChild(MKParser.Array_declaration1Context.class, 0);
         //System.out.println(context.getChild(MKParser.Array_declaration1Context.class, 0));
+
+        declareArray(context1, dataType);
+    }
+
+    @Override
+    public void exitReal_array_declaration(MKParser.Real_array_declarationContext context) {
+        line = context.getStart().getLine();
+        DataType dataType = DataType.REAL;
+        MKParser.Array_declaration1Context context1 = context.getChild(MKParser.Array_declaration1Context.class, 0);
 
         declareArray(context1, dataType);
     }
@@ -219,6 +226,7 @@ public class LLVMActions extends MKBaseListener {
                 elements.add(expressionStack.pop());
                 elementCount++;
             }
+            Collections.reverse(elements);
             if (arrayLength == 0)
                 arrayLength = elementCount;
             else if (elementCount > arrayLength)
