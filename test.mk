@@ -1,6 +1,3 @@
-lady a = 1.5 + 2;
-lady b = a + 3;
-lady c;
-hear real c;
-lady d = c + b;
-whisper d;
+real lady a[3] = {10.1, 20.2, 30.3};
+lady b = a[1] - 100 * 2;
+whisper b;

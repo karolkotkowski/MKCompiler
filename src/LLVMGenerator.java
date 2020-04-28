@@ -382,7 +382,7 @@ public class LLVMGenerator {
         ObjectType objectType = expression.getObjectType();
         Object expressionClass = expression.getClass();
         DataType dataType = expression.getDataType();
-        String name = null;
+        String arrayName = null;
         int index = 0;
         String fullName = null;
         String textValue = null;
@@ -405,12 +405,12 @@ public class LLVMGenerator {
         switch (objectType) {
             case VARIABLE:
                 if (expressionClass.equals(GlobalVarExpression.class)) {
-                    name = ((GlobalVarExpression) expression).getName();
+                    arrayName = ((GlobalVarExpression) expression).getName();
                     index = ((GlobalVarExpression) expression).getIndex();
-                    fullName = "@var_" + name + index;
+                    fullName = "@var_" + arrayName + index;
                     textValue = "%" + varIndex;
-                    if (!globalVariables.containsKey(name))
-                        actions.printError("using non-existing lady " + name);
+                    if (!globalVariables.containsKey(arrayName))
+                        actions.printError("using non-existing lady " + arrayName);
                     switch (dataType) {
                         case NONE:
                         case INT:
@@ -439,6 +439,39 @@ public class LLVMGenerator {
             case ARRAY:
                 break;
             case ARRAY_ELEMENT:
+                Expression array = null;
+                int arrayLength = 0;
+                if (expressionClass.equals(GlobalVarExpression.class)) {
+                    arrayName = ((GlobalVarExpression) expression).getName();
+
+                    if (!globalVariables.containsKey(arrayName))
+                        actions.printError("using non-existing array lady " + arrayName);
+
+                    array = globalVariables.get(arrayName);
+                    arrayLength = ((GlobalVarExpression) array).getIndex();
+
+                    index = ((UnnamedVarExpression) ((GlobalVarExpression) expression).getLength()).getIndex();
+                    bodyText.append("  %" + varIndex++ + " = load i32, i32* %" + index + "\n");
+                    bodyText.append("  %" + varIndex++ + " = sext i32 %" + (varIndex - 2) + " to i64 \n");
+                    textValue = "%" + (varIndex + 1);
+
+                    switch (dataType) {
+                        case NONE:
+                        case INT:
+                            fullName = "getelementptr inbounds [" + arrayLength + " x i32], [" + arrayLength + " x i32]* @var_" + arrayName + ", i64 0, i64 %" + (varIndex - 1) + "";
+                            bodyText.append("  %" + varIndex++ + " = " + fullName + "\n");
+                            bodyText.append("  %" + varIndex + " = load i32, i32* %" + (varIndex - 1) + "\n");
+                            break;
+                        case REAL:
+                            fullName = "getelementptr inbounds [" + arrayLength + " x double], [" + arrayLength + " x double]* @var_" + arrayName + ", i64 0, i64 %" + (varIndex - 1) + "";
+                            bodyText.append("  %" + varIndex++ + " = " + fullName + "\n");
+                            bodyText.append("  %" + varIndex + " = load double, double* %" + (varIndex - 1) + "\n");
+                            break;
+                        case CHAR:
+                            break;
+                    }
+                    varIndex++;
+                }
                 break;
         }
 
