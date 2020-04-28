@@ -78,6 +78,7 @@ public class LLVMGenerator {
     public void assignVariable(Expression leftExpression, Expression rightExpression) {
         Class leftExpressionClass = leftExpression.getClass();
         ObjectType leftObjectType = leftExpression.getObjectType();
+        DataType leftDataType = leftExpression.getDataType();
         String leftName = null;
         int leftIndex = 0;
         String leftFullName = null;
@@ -87,6 +88,7 @@ public class LLVMGenerator {
         DataType rightDataType = rightExpression.getDataType();
         String rightName = null;
         int rightIndex = 0;
+        String rightFullName = null;
         String textValue = null;
 
         switch (leftObjectType) {
@@ -122,9 +124,30 @@ public class LLVMGenerator {
                 break;
             case CONSTANT:
                 break;
-            case ARRAY:
-                break;
             case ARRAY_ELEMENT:
+                if (leftExpressionClass.equals(GlobalVarExpression.class)) {
+                    leftName = ((GlobalVarExpression) leftExpression).getName();
+                    leftIndex = ((GlobalVarExpression) leftExpression).getIndex();
+                    if (!globalVariables.containsKey(leftName))
+                        actions.printError("assigning to non-existing array lady " + leftName);
+
+                    GlobalVarExpression array = globalVariables.get(leftName);
+                    String arrayName = "@var_" + array.getName();
+                    int arrayLength = array.getIndex(); //using GlobalVarExpression.index to store array length
+
+                    switch (leftDataType) {
+                        case INT:
+                            leftFullName = "getelementptr inbounds ([" + arrayLength + " x i32], [" + arrayLength + " x i32]* " + arrayName + ", i64 0, i64 " + leftIndex + ")";
+                            break;
+                        case REAL:
+                            break;
+                        case CHAR:
+                            break;
+                    }
+
+                    if (array.getDataType() != rightDataType)
+                        actions.printError("array element type " + rightDataType + " not matching array type " + array.getDataType());
+                }
                 break;
         }
 
@@ -186,43 +209,77 @@ public class LLVMGenerator {
             case ARRAY:
                 break;
             case ARRAY_ELEMENT:
+                Expression arrayIndex = null;
+                Expression array = null;
+                int arrayLength = 0;
+                if (rightExpressionClass.equals(GlobalVarExpression.class)) {
+                    rightName = ((GlobalVarExpression) rightExpression).getName();
+                    if (!globalVariables.containsKey(rightName))
+                        actions.printError("assigning value from non-existing array lady " + rightName);
+                    array = globalVariables.get(rightName);
+                    arrayLength = ((GlobalVarExpression) array).getIndex();
+
+                    varIndex--;
+                    arrayIndex = ((GlobalVarExpression) rightExpression).getLength();
+                    bodyText.append("  %" + varIndex++ + " = load i32, i32* %" + ((UnnamedVarExpression) arrayIndex).getIndex() + " \n");
+                    bodyText.append("  %" + varIndex++ + " = sext i32 %" + (varIndex - 2) + " to i64 \n");
+
+                    switch (rightDataType) {
+                        case NONE:
+                        case INT:
+                            rightFullName = "getelementptr inbounds ([" + arrayLength + " x i32], [" + arrayLength + " x i32]* @var_" + rightName + ", i64 0, i64 " + ((UnnamedVarExpression) arrayIndex).getIndex() + ")";
+                            bodyText.append("  %" + varIndex++ + " = " + rightFullName + "\n");
+                            bodyText.append("  %" + varIndex + " = load i32, i32* %" + (varIndex - 1) + "\n");
+                            bodyText.append("  store i32 %" + varIndex + ", i32* " + leftFullName + "\n\n");
+                            break;
+                        case REAL:
+                            //////////////////
+                            bodyText.append("  %" + varIndex + " = load double, double* @var_" + rightName + rightIndex + "\n");
+                            bodyText.append("  store double %" + varIndex + ", double* " + leftFullName + "\n\n");
+                            break;
+                        case CHAR:
+                            break;
+                    }
+                    varIndex++;
+                }
                 break;
         }
     }
 
-    public void declareArray(Expression expression, List<Expression> expressionList) {
-        Class expressionClass = expression.getClass();
-        DataType dataType = expression.getDataType();
+    public void declareArray(Expression array, int length, List<Expression> elements) {
+        Class expressionClass = array.getClass();
+        DataType dataType = array.getDataType();
         String name = null;
 
-        Expression elementExpression = null;
-        ObjectType elementObjectType = null;
-        DataType elementDataType = null;
-        Iterator<Expression> expressionIterator = expressionList.iterator();
-        while (expressionIterator.hasNext()) {
-            elementExpression = expressionIterator.next();
-            elementObjectType = elementExpression.getObjectType();
-            elementDataType = elementExpression.getDataType();
-
-            if (elementObjectType == ObjectType.ARRAY)
-                actions.printError("declaring array element as an array");
+        if (expressionClass.equals(GlobalVarExpression.class)) {
+            name = ((GlobalVarExpression) array).getName();
+            if (globalVariables.containsKey(name))
+                actions.printError("declaring already existing array lady " + name);
+            array = new GlobalVarExpression(ObjectType.ARRAY, dataType, name, length); //using GlobalVarExpression.index to store array length
+            globalVariables.put(name, (GlobalVarExpression) array);
             switch (dataType) {
-                case NUMERIC:
-                    if ()
+                case INT:
+                    headerText.append("@var_" + name + " = global [" + length + " x i32] zeroinitializer \n");
+                    break;
+                case REAL:
+                    break;
+                case CHAR:
                     break;
             }
         }
 
-        if (expressionClass.equals(GlobalVarExpression.class)) {
-            name = ((GlobalVarExpression) expression).getName();
-            //index = ((GlobalVarExpression) expression).getIndex();
-
-            if (globalVariables.containsKey(name))
-                actions.printError("declaring already existing lady " + name);
-            globalVariables.put(name, (GlobalVarExpression) expression);
-
-
+        Expression leftExpression = null;
+        Expression rightExpression = null;
+        Iterator<Expression> expressionIterator = elements.iterator();
+        int index = 0;
+        while (expressionIterator.hasNext()) {
+            rightExpression = expressionIterator.next();
+            if (expressionClass.equals(GlobalVarExpression.class))
+                leftExpression = new GlobalVarExpression(ObjectType.ARRAY_ELEMENT, dataType, name, index);
+            assignVariable(leftExpression, rightExpression);
+            index++;
         }
+    }
 
     public UnnamedVarExpression calculate(Expression leftExpression, CalculationType calculationType, Expression rightExpression) {
         leftExpression = allocate(leftExpression);
@@ -296,7 +353,7 @@ public class LLVMGenerator {
         return result;
     }
 
-    private UnnamedVarExpression allocate(Expression expression) {
+    public UnnamedVarExpression allocate(Expression expression) {
         ObjectType objectType = expression.getObjectType();
         Object expressionClass = expression.getClass();
         DataType dataType = expression.getDataType();
@@ -410,8 +467,8 @@ public class LLVMGenerator {
         varIndex++;
         assignVariable(leftExpression, expression);
 
-        switch (objectType) {
-            case VARIABLE:
+        //switch (objectType) {
+            //case VARIABLE:
                 switch (dataType) {
                     case NONE:
                     case INT:
@@ -427,14 +484,14 @@ public class LLVMGenerator {
                     case CHAR:
                         break;
                 }
-                break;
+            /*    break;
             case CONSTANT:
                 break;
             case ARRAY:
                 break;
             case ARRAY_ELEMENT:
-                break;
-        }
+                break;*/
+        //}
         varIndex++;
     }
 

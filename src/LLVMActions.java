@@ -1,4 +1,8 @@
+import com.sun.javaws.jnl.RContentDesc;
+
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Stack;
 
 public class LLVMActions extends MKBaseListener {
@@ -95,6 +99,33 @@ public class LLVMActions extends MKBaseListener {
         expressionStack.push(expression);
     }
 
+    public void exitArray_index(MKParser.Array_indexContext context) {
+        line = context.getStart().getLine();
+
+        Expression index = expressionStack.pop();
+        if (index.getDataType() != DataType.INT)
+            printError("array index or length must be an integer");
+        index = generator.allocate(index);
+        expressionStack.push(index);
+    }
+
+    @Override
+    public void exitArray_element1(MKParser.Array_element1Context context) {
+        line = context.getStart().getLine();
+
+        String name = context.NAME().getText();
+        Expression index = expressionStack.pop();
+        GlobalVarExpression array = null;
+
+        if (globalVariables.containsKey(name)) {
+            array = globalVariables.get(name);
+            expressionStack.push(new GlobalVarExpression(ObjectType.ARRAY_ELEMENT, array.getDataType(), name, index));
+        } else
+            printError("using non-existing array lady " + name);
+
+
+    }
+
     @Override
     public void exitVariable_declaration(MKParser.Variable_declarationContext context) {
         line = context.getStart().getLine();
@@ -164,6 +195,61 @@ public class LLVMActions extends MKBaseListener {
 
         generator.scan(dataType, (GlobalVarExpression) expression);
     }
+
+    public void exitInt_array_declaration(MKParser.Int_array_declarationContext context) {
+        line = context.getStart().getLine();
+        DataType dataType = DataType.INT;
+        MKParser.Array_declaration1Context context1 = context.getChild(MKParser.Array_declaration1Context.class, 0);
+        //System.out.println(context.getChild(MKParser.Array_declaration1Context.class, 0));
+
+        declareArray(context1, dataType);
+    }
+
+    private void declareArray(MKParser.Array_declaration1Context context, DataType dataType) {
+        String name = context.NAME().getText();
+        int arrayLength = 0;
+
+        if (context.getChild(MKParser.Array_lengthContext.class, 0) != null)
+            arrayLength = Integer.parseInt(context.getChild(MKParser.Array_lengthContext.class, 0).INT().getText());
+
+        List<Expression> elements = new ArrayList<Expression>(arrayLength);
+        if (context.ASSIGN() != null) {
+            int elementCount = 0;
+            while (!expressionStack.empty()) {
+                elements.add(expressionStack.pop());
+                elementCount++;
+            }
+            if (arrayLength == 0)
+                arrayLength = elementCount;
+            else if (elementCount > arrayLength)
+                printError("assigning more elements to an array lady than declared");
+        }
+
+        GlobalVarExpression array = new GlobalVarExpression(ObjectType.ARRAY, dataType, name, 0);
+        generator.declareArray(array, arrayLength, elements);
+    }
+
+    /*private void declareArray(MKParser.Array_declaration1Context context, DataType dataType) {
+        String name = context.NAME().getText();
+        Expression arrayLength = null;
+
+        List<Expression> elements = new ArrayList<Expression>();
+        int elementCount = 0;
+        if (context.ASSIGN() != null) {
+            while (!expressionStack.empty()) {
+                elements.add(expressionStack.pop());
+                elementCount++;
+            }
+        }
+
+        if (context.getChild(MKParser.Array_indexContext.class, 0) != null)
+            arrayLength = expressionStack.pop();
+        else
+            arrayLength = generator.allocate(new ValueExpression(ObjectType.VARIABLE, DataType.INT, new Integer(elementCount)));
+
+        GlobalVarExpression array = new GlobalVarExpression(ObjectType.ARRAY, dataType, name, 0);
+        generator.declareArray(array, arrayLength, elements);
+    }*/
 
     @Override
     public void exitFile(MKParser.FileContext context) {

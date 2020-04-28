@@ -25,12 +25,18 @@ expression2             : bracket_expression                #bracket
                           | REAL                            #real
                           | CHAR                            #char
                           | STR                             #str
+                          | array_element1                  #array_element
                           ;
 bracket_expression      : OPENBRACKET expression CLOSEBRACKET;
 
-array_declaration       : NUMERIC DECLAREVARIABLE NAME OPENARRAY (INT)* CLOSEARRAY (ASSIGN array_elements)? #numeric_array_declaration
+array_declaration       : INTSTATEMENT array_declaration1       #int_array_declaration
+                          | REALSTATEMENT array_declaration1    #real_array_declarattion
                           ;
+array_declaration1      : DECLAREVARIABLE NAME OPENARRAY (array_length)? CLOSEARRAY (ASSIGN array_elements)?;
 array_elements          : OPENBLOCK expression (NEXTELEMENT expression)* CLOSEBLOCK;
+array_length            : INT;
+array_index             : expression;
+array_element1          : NAME OPENARRAY array_index CLOSEARRAY;
 
 print                   : PRINT expression;
 
@@ -59,8 +65,6 @@ SCAN                    : 'hear';
 INTSTATEMENT            : 'int';
 REALSTATEMENT           : 'real';
 STRSTATEMENT            : 'str';
-
-NUMERIC                 : 'num';
 
 NAME                    : [a-zA-Z] | [a-zA-Z][a-zA-Z0-9]+;
 

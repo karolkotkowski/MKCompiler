@@ -26,10 +26,12 @@ public class MainToConsole {
 
         System.setErr(new PrintStream(new FileOutputStream(FileDescriptor.err)));
         BufferedReader reader;
+        boolean syntaxError = false;
         try {
-            reader = new BufferedReader(new FileReader(
-                    errFile));
+            reader = new BufferedReader(new FileReader(errFile));
             String line = reader.readLine();
+            if (line != null)
+                syntaxError = true;
             while (line != null) {
                 System.err.println("Syntax error at " + line + " in " + fileFrom);
                 line = reader.readLine();
@@ -38,6 +40,8 @@ public class MainToConsole {
         } catch (IOException e) {
             e.printStackTrace();
         }
+        if (syntaxError)
+            System.exit(1);
 
         walker.walk(new LLVMActions(fileFrom), tree);
     }
