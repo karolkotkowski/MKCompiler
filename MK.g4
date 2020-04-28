@@ -4,7 +4,7 @@ file                    : (block | statement)+ EOF;
 
 block                   : OPENBLOCK statement+ CLOSEBLOCK;
 
-statement               : (variable_declaration | variable_assignment | command | array_declaration) ENDSTATEMENT;
+statement               : (variable_declaration | variable_assignment | command | array_declaration | array_assignment) ENDSTATEMENT;
 
 command                 : print | scan;
 
@@ -29,6 +29,7 @@ expression2             : bracket_expression                #bracket
                           ;
 bracket_expression      : OPENBRACKET expression CLOSEBRACKET;
 
+array_assignment        : array_element1 ASSIGN expression;
 array_declaration       : INTSTATEMENT array_declaration1       #int_array_declaration
                           | REALSTATEMENT array_declaration1    #real_array_declaration
                           ;

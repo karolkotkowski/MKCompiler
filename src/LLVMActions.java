@@ -237,6 +237,16 @@ public class LLVMActions extends MKBaseListener {
         generator.declareArray(array, arrayLength, elements);
     }
 
+    @Override
+    public void exitArray_assignment(MKParser.Array_assignmentContext context) {
+        line = context.getStart().getLine();
+
+        Expression rightExpression = expressionStack.pop();
+        Expression leftExpression = expressionStack.pop();
+
+        generator.assignVariable(leftExpression, rightExpression);
+    }
+
     /*private void declareArray(MKParser.Array_declaration1Context context, DataType dataType) {
         String name = context.NAME().getText();
         Expression arrayLength = null;

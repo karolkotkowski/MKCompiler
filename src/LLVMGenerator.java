@@ -127,7 +127,9 @@ public class LLVMGenerator {
             case ARRAY_ELEMENT:
                 if (leftExpressionClass.equals(GlobalVarExpression.class)) {
                     leftName = ((GlobalVarExpression) leftExpression).getName();
-                    leftIndex = ((GlobalVarExpression) leftExpression).getIndex();
+                    UnnamedVarExpression indexExpression = ((UnnamedVarExpression) ((GlobalVarExpression) leftExpression).getLength());
+                    String leftIndexStr;
+
                     if (!globalVariables.containsKey(leftName))
                         actions.printError("assigning to non-existing array lady " + leftName);
 
@@ -135,19 +137,41 @@ public class LLVMGenerator {
                     String arrayName = "@var_" + array.getName();
                     int arrayLength = array.getIndex(); //using GlobalVarExpression.index to store array length
 
-                    switch (leftDataType) {
-                        case INT:
-                            leftFullName = "getelementptr inbounds ([" + arrayLength + " x i32], [" + arrayLength + " x i32]* " + arrayName + ", i64 0, i64 " + leftIndex + ")";
-                            break;
-                        case REAL:
-                            leftFullName = "getelementptr inbounds ([" + arrayLength + " x double], [" + arrayLength + " x double]* " + arrayName + ", i64 0, i64 " + leftIndex + ")";
-                            break;
-                        case CHAR:
-                            break;
-                    }
-
                     if (array.getDataType() != rightDataType)
                         actions.printError("array element type " + rightDataType + " not matching array type " + array.getDataType());
+
+                    if (indexExpression == null) {
+                        leftIndex = ((GlobalVarExpression) leftExpression).getIndex();
+                        leftIndexStr = "" + leftIndex;
+                        switch (leftDataType) {
+                            case INT:
+                                leftFullName = "getelementptr inbounds ([" + arrayLength + " x i32], [" + arrayLength + " x i32]* " + arrayName + ", i64 0, i64 " + leftIndexStr + ")";
+                                break;
+                            case REAL:
+                                leftFullName = "getelementptr inbounds ([" + arrayLength + " x double], [" + arrayLength + " x double]* " + arrayName + ", i64 0, i64 " + leftIndexStr + ")";
+                                break;
+                            case CHAR:
+                                break;
+                        }
+                    } else {
+                        leftIndex = indexExpression.getIndex();
+                        bodyText.append("  %" + varIndex++ + " = load i32, i32* %" + leftIndex + "\n");
+                        bodyText.append("  %" + varIndex++ + " = sext i32 %" + (varIndex - 2) + " to i64 \n");
+                        leftIndexStr = "%" + (varIndex - 1);
+                        switch (leftDataType) {
+                            case INT:
+                                bodyText.append("  %" + varIndex + " = getelementptr inbounds [" + arrayLength + " x i32], [" + arrayLength + " x i32]* " + arrayName + ", i64 0, i64 " + leftIndexStr + " \n");
+                                break;
+                            case REAL:
+                                bodyText.append("  %" + varIndex + " = getelementptr inbounds [" + arrayLength + " x double], [" + arrayLength + " x double]* " + arrayName + ", i64 0, i64 " + leftIndexStr + " \n");
+                                break;
+                            case CHAR:
+                                break;
+                        }
+                        leftFullName = "%" + varIndex++;
+                    }
+
+
                 }
                 break;
         }
@@ -276,7 +300,7 @@ public class LLVMGenerator {
         while (expressionIterator.hasNext()) {
             rightExpression = expressionIterator.next();
             if (expressionClass.equals(GlobalVarExpression.class))
-                leftExpression = new GlobalVarExpression(ObjectType.ARRAY_ELEMENT, dataType, name, index);
+                leftExpression = new GlobalVarExpression(ObjectType.ARRAY_ELEMENT, dataType, name, index);//new UnnamedVarExpression(ObjectType.VARIABLE, DataType.INT, index));
             assignVariable(leftExpression, rightExpression);
             index++;
         }
