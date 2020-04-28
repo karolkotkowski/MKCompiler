@@ -99,7 +99,7 @@ public class LLVMGenerator {
                     if (globalVariables.containsKey(leftName)) {
                         leftIndex = globalVariables.get(leftName).getIndex();
                         leftIndex++;
-                        leftExpression = new GlobalVarExpression(rightObjectType, rightDataType, leftName, leftIndex);
+                        leftExpression = new GlobalVarExpression(leftObjectType, rightDataType, leftName, leftIndex);
                         declareVariable(leftExpression);
                         leftFullName = "@var_" + leftName + leftIndex;
                     } else
