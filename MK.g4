@@ -1,15 +1,24 @@
 grammar MK;
 
-file                    : (block | statement)+ EOF;
+file                    : (block | statement  | function_declaration)* EOF;
 
-block                   : OPENBLOCK statement+ CLOSEBLOCK;
+block                   : OPENBLOCK statement* CLOSEBLOCK;
 
 statement               : (variable_declaration | variable_assignment | command | array_declaration | array_assignment) ENDSTATEMENT;
 
-command                 : print | scan;
+command                 : print | scan | return;
 
 variable_declaration    : DECLAREVARIABLE NAME (ASSIGN expression)?;
 variable_assignment     : NAME ASSIGN expression;
+
+function_declaration    : INTSTATEMENT function_declaration1    #int_function
+                          | REALSTATEMENT function_declaration1 #real_function
+                          ;
+function_declaration1   : DECLAREVARIABLE NAME arguments block;
+function1               : NAME arguments;
+return                  : RETURN expression;
+
+arguments               : OPENBRACKET (expression (NEXTELEMENT expression)* )* CLOSEBRACKET;
 
 expression              : expression1                       #single1
                           | expression ADD expression1      #add
@@ -26,6 +35,7 @@ expression2             : bracket_expression                #bracket
                           | CHAR                            #char
                           | STR                             #str
                           | array_element1                  #array_element
+                          | function1                       #function
                           ;
 bracket_expression      : OPENBRACKET expression CLOSEBRACKET;
 
@@ -57,6 +67,8 @@ OPENARRAY               : '[';
 CLOSEARRAY              : ']';
 
 ASSIGN                  : '=';
+
+RETURN                  : 'give back';
 
 DECLAREVARIABLE         : 'lady';
 
