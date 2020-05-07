@@ -5,13 +5,15 @@ public class GlobalVarExpression implements Expression {
     private ObjectType objectType;
     private Expression length; //it is array index when (this) is array element
 
+    //for variables and functions
     public GlobalVarExpression(ObjectType objectType, DataType dataType, String name, int index) {
         this.dataType = dataType;
         this.name = name;
-        this.index = index;
+        this.index = index; //when function it is a number of arguments
         this.objectType = objectType;
     }
 
+    //for arrays
     public GlobalVarExpression(ObjectType objectType, DataType dataType, String name, Expression length) {
         this.dataType = dataType;
         this.name = name;

@@ -1,3 +1,4 @@
+import com.sun.corba.se.spi.ior.ObjectKey;
 import com.sun.javaws.jnl.RContentDesc;
 
 import java.util.*;
@@ -9,9 +10,95 @@ public class LLVMActions extends MKBaseListener {
     private Configuration configuration = new Configuration();
     private int line = 0;
     private String fileName;
+    private boolean inFunction = false; //flag for checking if currently in function body
+    private boolean returning = false;  //flag for checking if a return statement occured in a function
+    private HashMap<String, GlobalVarExpression> functions = new HashMap<String, GlobalVarExpression>();
 
     public LLVMActions(String fileName) {
         this.fileName = fileName;
+    }
+
+    @Override
+    public void exitInt_argument(MKParser.Int_argumentContext context) {
+        line = context.getStart().getLine();
+        String name = context.NAME().getText();
+
+        NamedVarExpression argument = new NamedVarExpression(ObjectType.VARIABLE, DataType.INT, name);
+        expressionStack.push(argument);
+    }
+
+    @Override
+    public void exitReal_argument(MKParser.Real_argumentContext context) {
+        line = context.getStart().getLine();
+        String name = context.NAME().getText();
+
+        NamedVarExpression argument = new NamedVarExpression(ObjectType.VARIABLE, DataType.REAL, name);
+        expressionStack.push(argument);
+    }
+
+    @Override
+    public void exitInt_function_declaration(MKParser.Int_function_declarationContext context) {
+        line = context.getStart().getLine();
+        MKParser.Function_declaration2Context context2 = context.getChild(MKParser.Function_declaration2Context.class, 0);
+
+        declareFunction(DataType.INT, context2);
+    }
+
+    @Override
+    public void exitReal_function_declaration(MKParser.Real_function_declarationContext context) {
+        line = context.getStart().getLine();
+        MKParser.Function_declaration2Context context2 = context.getChild(MKParser.Function_declaration2Context.class, 0);
+
+        declareFunction(DataType.REAL, context2);
+    }
+
+    private void declareFunction(DataType dataType, MKParser.Function_declaration2Context context2) {
+        String name = context2.NAME().getText();
+        MKParser.ArgumentsContext context3 = context2.getChild(MKParser.ArgumentsContext.class, 0);
+        int childCount = context3.getChildCount();
+
+        int argumentsCount = 0;
+        if (childCount > 2)
+            argumentsCount = (int) (childCount * 0.5 - 0.5);
+
+        if (inFunction)
+            printError("defining function not allowed inside another function");
+        if (functions.containsKey(name))
+            printError("defining already existing function");
+
+        List<Expression> arguments = new ArrayList<Expression>(argumentsCount);
+        for (int i = 0; i < argumentsCount; i++) {
+            arguments.add(expressionStack.pop());
+        }
+        Collections.reverse(arguments);
+
+        inFunction = true;
+        returning = false;
+        GlobalVarExpression function = new GlobalVarExpression(ObjectType.FUNCTION, dataType, name, argumentsCount);
+        functions.put(name, function);
+        generator.declareFunction(function, arguments);
+    }
+
+    @Override
+    public void exitFunction_declaration(MKParser.Function_declarationContext context) {
+        line = context.getStart().getLine();
+        if (!returning)
+            printError("missing give back statement in function body");
+        inFunction = false;
+        returning = false;
+        generator.endFunctionDefinition();
+    }
+
+    @Override
+    public void exitReturning(MKParser.ReturningContext context) {
+        line = context.getStart().getLine();
+        Expression expression = expressionStack.pop();
+
+        if (!inFunction)
+            printError("give back statement used while not in function body");
+        returning = true;
+
+        generator.doReturning(expression);
     }
 
     @Override
@@ -246,28 +333,6 @@ public class LLVMActions extends MKBaseListener {
 
         generator.assignVariable(leftExpression, rightExpression);
     }
-
-    /*private void declareArray(MKParser.Array_declaration1Context context, DataType dataType) {
-        String name = context.NAME().getText();
-        Expression arrayLength = null;
-
-        List<Expression> elements = new ArrayList<Expression>();
-        int elementCount = 0;
-        if (context.ASSIGN() != null) {
-            while (!expressionStack.empty()) {
-                elements.add(expressionStack.pop());
-                elementCount++;
-            }
-        }
-
-        if (context.getChild(MKParser.Array_indexContext.class, 0) != null)
-            arrayLength = expressionStack.pop();
-        else
-            arrayLength = generator.allocate(new ValueExpression(ObjectType.VARIABLE, DataType.INT, new Integer(elementCount)));
-
-        GlobalVarExpression array = new GlobalVarExpression(ObjectType.ARRAY, dataType, name, 0);
-        generator.declareArray(array, arrayLength, elements);
-    }*/
 
     @Override
     public void exitFile(MKParser.FileContext context) {

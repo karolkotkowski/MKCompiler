@@ -1,17 +1,15 @@
 
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.Iterator;
-import java.util.List;
+import java.util.*;
 
 public class LLVMGenerator {
 
     private HashMap<String, GlobalVarExpression> globalVariables;
-    private StringBuilder headerText = new StringBuilder();
-    private StringBuilder bodyText = new StringBuilder();
+    private HashMap<String, Set<String>> localVariables = new HashMap<String, Set<String>>();
+    private LLVMBuilder llvm = new LLVMBuilder();
     private int varIndex = 1;
     private LLVMActions actions;
+    private GlobalVarExpression currentFunction = null;
 
     private Configuration configuration = new Configuration();
     private HashMap<String, String>  systemVariables = configuration.getSystemVariables();
@@ -29,13 +27,102 @@ public class LLVMGenerator {
         text.append(systemVariables.get("printReal") + " = constant [4 x i8] c\"%f\\0A\\00\"\n");
         text.append(systemVariables.get("scanInt") + " = constant [3 x i8] c\"%d\\00\"\n");
         text.append(systemVariables.get("scanReal") + " = constant [4 x i8] c\"%lf\\00\"\n");
-        text.append("\n");
-        text.append(headerText);
-        text.append("\n");
-        text.append("define i32 @main() nounwind{\n");
-        text.append(bodyText);
-        text.append("  ret i32 0 \n}\n");
+        text.append(llvm);
         System.out.println(text.toString());
+    }
+
+    public void declareFunction(GlobalVarExpression function, List<Expression> arguments) {
+        DataType dataType = function.getDataType();
+        String name = function.getName();
+        int numberOfArguments = function.getIndex();
+
+        currentFunction = function;
+        varIndex = 0;
+
+        StringBuilder definition = new StringBuilder();
+        definition.append("\ndefine ");
+        switch (dataType) {
+            case INT:
+                definition.append("i32 ");
+                break;
+            case REAL:
+                definition.append("double ");
+                break;
+        }
+        if ("main".equals(name))
+            llvm.appendToMainDeclaration(definition);
+        else
+            llvm.append(definition);
+        llvm.holdBuffer();
+
+        localVariables.put(name, new HashSet<String>());
+        StringBuilder types = new StringBuilder();
+        Iterator<Expression> iterator = arguments.iterator();
+        Expression argument;
+        DataType argumentType;
+        while (iterator.hasNext()) {
+            argument = iterator.next();
+            argumentType = argument.getDataType();
+
+            declareVariable(argument);
+            assignVariable(argument, new UnnamedVarExpression(ObjectType.VARIABLE, argumentType, varIndex));
+            varIndex++;
+            switch (argumentType) {
+                case INT:
+                    types.append("i32");
+                    break;
+                case REAL:
+                    types.append("double");
+                    break;
+            }
+            if (iterator.hasNext())
+                types.append(", ");
+        }
+        varIndex++;
+        String buffer = llvm.getBuffer();
+        llvm.releaseBuffer();
+        if (name.equals("main"))
+            llvm.appendToMainDeclaration("@main(" + types.toString() + ") nounwind { \n" + buffer);
+        else
+            llvm.append("@func_" + name + "(" + types.toString() + ") nounwind { \n" + buffer);
+
+    }
+
+    public void doReturning(Expression expression) {
+        DataType dataType = currentFunction.getDataType();
+
+        int memoryIndex = varIndex;
+        UnnamedVarExpression leftExpression = new UnnamedVarExpression(ObjectType.VARIABLE, expression.getDataType(), memoryIndex);
+        varIndex++;
+        assignVariable(leftExpression, expression);
+
+        UnnamedVarExpression resultExpression = null;
+        if (dataType != expression.getDataType())
+            resultExpression = cast(leftExpression, dataType);
+        else
+            resultExpression = leftExpression;
+
+        llvm.append("  %" + varIndex + " = load ", currentFunction);
+        switch (dataType) {
+            case INT:
+                llvm.append("i32, i32* ", currentFunction);
+                llvm.holdBuffer();
+                llvm.append("  ret i32 ", currentFunction);
+                break;
+            case REAL:
+                llvm.append("double, double* ", currentFunction);
+                llvm.holdBuffer();
+                llvm.append("  ret double ", currentFunction);
+                break;
+        }
+        llvm.append("%" + varIndex + "\n", currentFunction);
+        String buffer = llvm.getBuffer();
+        llvm.releaseBuffer();
+        llvm.append("%" + resultExpression.getIndex() + "\n" + buffer, currentFunction);
+    }
+
+    public void endFunctionDefinition() {
+        llvm.append("} \n", currentFunction);
     }
 
     public void declareVariable(Expression expression) {
@@ -59,15 +146,39 @@ public class LLVMGenerator {
                         switch (dataType) {
                             case NONE:
                             case INT:
-                                headerText.append("@var_" + name + index + " = global i32 0\n");
+                                llvm.appendToHeader("@var_" + name + index + " = global i32 0\n");
                                 break;
                             case REAL:
-                                headerText.append("@var_" + name + index + " = global double 0.0\n");
+                                llvm.appendToHeader("@var_" + name + index + " = global double 0.0\n");
                                 break;
                             case CHAR:
                                 break;
                         }
                     }
+                } else if (expressionClass.equals(NamedVarExpression.class)) {
+                    name = ((NamedVarExpression) expression).getName();
+
+                    if (currentFunction == null)
+                        actions.printError("declaring local variable " + name + " outside a function body");
+
+                    String functionName = currentFunction.getName();
+                    Set<String> localNames = localVariables.get(functionName);
+
+                    if (localNames.contains(name))
+                        actions.printError("declaring already existing lady " + name + " in function " + functionName + "()");
+                    localNames.add(name);
+
+                    llvm.append("  %var_" + name + " = alloca ", currentFunction);
+                    switch (dataType) {
+                        case INT:
+                            llvm.append("i32", currentFunction);
+                            break;
+                        case REAL:
+                            llvm.append("double", currentFunction);
+                            break;
+                    }
+                    llvm.append("\n");
+
                 }
                 break;
             case CONSTANT:
@@ -104,22 +215,22 @@ public class LLVMGenerator {
                         leftFullName = "@var_" + leftName + leftIndex;
                     } else
                         actions.printError("assigning to non-existing lady " + leftName);
-                } else {
-                    if (leftExpressionClass.equals(UnnamedVarExpression.class)) {
-                        leftIndex = ((UnnamedVarExpression) leftExpression).getIndex();
-                        leftFullName = "%" + leftIndex;
-                        switch(rightDataType) {
-                            case NONE:
-                            case INT:
-                                bodyText.append("  %" + leftIndex + " = alloca i32 \n");
-                                break;
-                            case REAL:
-                                bodyText.append("  %" + leftIndex + " = alloca double \n");
-                                break;
-                            case CHAR:
-                                break;
-                        }
+                } else if (leftExpressionClass.equals(UnnamedVarExpression.class)) {
+                    leftIndex = ((UnnamedVarExpression) leftExpression).getIndex();
+                    leftFullName = "%" + leftIndex;
+                    switch (rightDataType) {
+                        case NONE:
+                        case INT:
+                            llvm.append("  %" + leftIndex + " = alloca i32 \n", currentFunction);
+                            break;
+                        case REAL:
+                            llvm.append("  %" + leftIndex + " = alloca double \n", currentFunction);
+                            break;
+                        case CHAR:
+                            break;
                     }
+                } else if (leftExpressionClass.equals(NamedVarExpression.class)) {
+                    leftFullName = "%var_" + ((NamedVarExpression) leftExpression).getName();
                 }
                 break;
             case CONSTANT:
@@ -155,15 +266,15 @@ public class LLVMGenerator {
                         }
                     } else {
                         leftIndex = indexExpression.getIndex();
-                        bodyText.append("  %" + varIndex++ + " = load i32, i32* %" + leftIndex + "\n");
-                        bodyText.append("  %" + varIndex++ + " = sext i32 %" + (varIndex - 2) + " to i64 \n");
+                        llvm.append("  %" + varIndex++ + " = load i32, i32* %" + leftIndex + "\n", currentFunction);
+                        llvm.append("  %" + varIndex++ + " = sext i32 %" + (varIndex - 2) + " to i64 \n", currentFunction);
                         leftIndexStr = "%" + (varIndex - 1);
                         switch (leftDataType) {
                             case INT:
-                                bodyText.append("  %" + varIndex + " = getelementptr inbounds [" + arrayLength + " x i32], [" + arrayLength + " x i32]* " + arrayName + ", i64 0, i64 " + leftIndexStr + " \n");
+                                llvm.append("  %" + varIndex + " = getelementptr inbounds [" + arrayLength + " x i32], [" + arrayLength + " x i32]* " + arrayName + ", i64 0, i64 " + leftIndexStr + " \n", currentFunction);
                                 break;
                             case REAL:
-                                bodyText.append("  %" + varIndex + " = getelementptr inbounds [" + arrayLength + " x double], [" + arrayLength + " x double]* " + arrayName + ", i64 0, i64 " + leftIndexStr + " \n");
+                                llvm.append("  %" + varIndex + " = getelementptr inbounds [" + arrayLength + " x double], [" + arrayLength + " x double]* " + arrayName + ", i64 0, i64 " + leftIndexStr + " \n", currentFunction);
                                 break;
                             case CHAR:
                                 break;
@@ -186,12 +297,12 @@ public class LLVMGenerator {
                     switch (rightDataType) {
                         case NONE:
                         case INT:
-                            bodyText.append("  %" + varIndex + " = load i32, i32* @var_" + rightName + rightIndex + "\n");
-                            bodyText.append("  store i32 %" + varIndex + ", i32* " + leftFullName + "\n\n");
+                            llvm.append("  %" + varIndex + " = load i32, i32* @var_" + rightName + rightIndex + "\n", currentFunction);
+                            llvm.append("  store i32 %" + varIndex + ", i32* " + leftFullName + "\n\n", currentFunction);
                             break;
                         case REAL:
-                            bodyText.append("  %" + varIndex + " = load double, double* @var_" + rightName + rightIndex + "\n");
-                            bodyText.append("  store double %" + varIndex + ", double* " + leftFullName + "\n\n");
+                            llvm.append("  %" + varIndex + " = load double, double* @var_" + rightName + rightIndex + "\n", currentFunction);
+                            llvm.append("  store double %" + varIndex + ", double* " + leftFullName + "\n\n", currentFunction);
                             break;
                         case CHAR:
                             break;
@@ -203,10 +314,10 @@ public class LLVMGenerator {
                         switch (rightDataType) {
                             case NONE:
                             case INT:
-                                bodyText.append("  store i32 " + textValue + ", i32* " + leftFullName + "\n\n");
+                                llvm.append("  store i32 " + textValue + ", i32* " + leftFullName + "\n\n", currentFunction);
                                 break;
                             case REAL:
-                                bodyText.append("  store double " + textValue + ", double* " + leftFullName + "\n\n");
+                                llvm.append("  store double " + textValue + ", double* " + leftFullName + "\n\n", currentFunction);
                                 break;
                             case CHAR:
                                 break;
@@ -217,10 +328,10 @@ public class LLVMGenerator {
                             switch (rightDataType) {
                                 case NONE:
                                 case INT:
-                                    bodyText.append("  store i32 %" + rightIndex + ", i32* " + leftFullName + "\n\n");
+                                    llvm.append("  store i32 %" + rightIndex + ", i32* " + leftFullName + "\n\n", currentFunction);
                                     break;
                                 case REAL:
-                                    bodyText.append("  store double %" + rightIndex + ", double* " + leftFullName + "\n\n");
+                                    llvm.append("  store double %" + rightIndex + ", double* " + leftFullName + "\n\n", currentFunction);
                                     break;
                                 case CHAR:
                                     break;
@@ -245,21 +356,21 @@ public class LLVMGenerator {
                     arrayLength = ((GlobalVarExpression) array).getIndex();
 
                     arrayIndex = ((GlobalVarExpression) rightExpression).getLength();
-                    bodyText.append("  %" + varIndex++ + " = load i32, i32* %" + ((UnnamedVarExpression) arrayIndex).getIndex() + " \n");
-                    bodyText.append("  %" + varIndex++ + " = sext i32 %" + (varIndex - 2) + " to i64 \n");
+                    llvm.append("  %" + varIndex++ + " = load i32, i32* %" + ((UnnamedVarExpression) arrayIndex).getIndex() + " \n", currentFunction);
+                    llvm.append("  %" + varIndex++ + " = sext i32 %" + (varIndex - 2) + " to i64 \n", currentFunction);
 
                     switch (rightDataType) {
                         case INT:
                             rightFullName = "getelementptr inbounds [" + arrayLength + " x i32], [" + arrayLength + " x i32]* @var_" + rightName + ", i64 0, i64 %" + (varIndex - 1) + "";
-                            bodyText.append("  %" + varIndex++ + " = " + rightFullName + "\n");
-                            bodyText.append("  %" + varIndex + " = load i32, i32* %" + (varIndex - 1) + "\n");
-                            bodyText.append("  store i32 %" + varIndex + ", i32* " + leftFullName + "\n\n");
+                            llvm.append("  %" + varIndex++ + " = " + rightFullName + "\n", currentFunction);
+                            llvm.append("  %" + varIndex + " = load i32, i32* %" + (varIndex - 1) + "\n", currentFunction);
+                            llvm.append("  store i32 %" + varIndex + ", i32* " + leftFullName + "\n\n", currentFunction);
                             break;
                         case REAL:
                             rightFullName = "getelementptr inbounds [" + arrayLength + " x double], [" + arrayLength + " x double]* @var_" + rightName + ", i64 0, i64 %" + (varIndex - 1) + "";
-                            bodyText.append("  %" + varIndex++ + " = " + rightFullName + "\n");
-                            bodyText.append("  %" + varIndex + " = load double, double* %" + (varIndex - 1) + "\n");
-                            bodyText.append("  store double %" + varIndex + ", double* " + leftFullName + "\n\n");
+                            llvm.append("  %" + varIndex++ + " = " + rightFullName + "\n", currentFunction);
+                            llvm.append("  %" + varIndex + " = load double, double* %" + (varIndex - 1) + "\n", currentFunction);
+                            llvm.append("  store double %" + varIndex + ", double* " + leftFullName + "\n\n", currentFunction);
                             break;
                         case CHAR:
                             break;
@@ -283,10 +394,10 @@ public class LLVMGenerator {
             globalVariables.put(name, (GlobalVarExpression) array);
             switch (dataType) {
                 case INT:
-                    headerText.append("@var_" + name + " = global [" + length + " x i32] zeroinitializer \n");
+                    llvm.appendToHeader("@var_" + name + " = global [" + length + " x i32] zeroinitializer \n");
                     break;
                 case REAL:
-                    headerText.append("@var_" + name + " = global [" + length + " x double] zeroinitializer \n");
+                    llvm.appendToHeader("@var_" + name + " = global [" + length + " x double] zeroinitializer \n");
                     break;
                 case CHAR:
                     break;
@@ -328,49 +439,49 @@ public class LLVMGenerator {
         varIndex++;
 
         if (realCalculation) {
-            bodyText.append("  %" + resultIndex + " = alloca double \n");
+            llvm.append("  %" + resultIndex + " = alloca double \n", currentFunction);
 
-            bodyText.append("  %" + varIndex++ + " = load double, double* %" + leftIndex + "\n");
-            bodyText.append("  %" + varIndex++ + " = load double, double* %" + rightIndex + "\n");
+            llvm.append("  %" + varIndex++ + " = load double, double* %" + leftIndex + "\n", currentFunction);
+            llvm.append("  %" + varIndex++ + " = load double, double* %" + rightIndex + "\n", currentFunction);
 
         } else {
-            bodyText.append("  %" + resultIndex + " = alloca i32 \n");
+            llvm.append("  %" + resultIndex + " = alloca i32 \n", currentFunction);
 
-            bodyText.append("  %" + varIndex++ + " = load i32, i32* %" + leftIndex + "\n");
-            bodyText.append("  %" + varIndex++ + " = load i32, i32* %" + rightIndex + "\n");
+            llvm.append("  %" + varIndex++ + " = load i32, i32* %" + leftIndex + "\n", currentFunction);
+            llvm.append("  %" + varIndex++ + " = load i32, i32* %" + rightIndex + "\n", currentFunction);
         }
         varIndex--;
 
         if (realCalculation) {
             switch (calculationType) {
                 case ADD:
-                    bodyText.append("  %" + (varIndex++ + 1) + " = fadd double %" + (varIndex - 2) + ", %" + (varIndex - 1) + "\n\n");
+                    llvm.append("  %" + (varIndex++ + 1) + " = fadd double %" + (varIndex - 2) + ", %" + (varIndex - 1) + "\n\n", currentFunction);
                     break;
                 case SUB:
-                    bodyText.append("  %" + (varIndex++ + 1) + " = fsub double %" + (varIndex - 2) + ", %" + (varIndex - 1) + "\n\n");
+                    llvm.append("  %" + (varIndex++ + 1) + " = fsub double %" + (varIndex - 2) + ", %" + (varIndex - 1) + "\n\n", currentFunction);
                     break;
                 case MUL:
-                    bodyText.append("  %" + (varIndex++ + 1) + " = fmul double %" + (varIndex - 2) + ", %" + (varIndex - 1) + "\n\n");
+                    llvm.append("  %" + (varIndex++ + 1) + " = fmul double %" + (varIndex - 2) + ", %" + (varIndex - 1) + "\n\n", currentFunction);
                     break;
                 case DIV:
-                    bodyText.append("  %" + (varIndex++ + 1) + " = fdiv double %" + (varIndex - 2) + ", %" + (varIndex - 1) + "\n\n");
+                    llvm.append("  %" + (varIndex++ + 1) + " = fdiv double %" + (varIndex - 2) + ", %" + (varIndex - 1) + "\n\n", currentFunction);
                     break;
             }
             result = new UnnamedVarExpression(ObjectType.VARIABLE, DataType.REAL, varIndex);
         } else {
             switch (calculationType) {
                 case ADD:
-                    bodyText.append("  %" + (varIndex++ + 1) + " = add nsw i32 %" + (varIndex - 2) + ", %" + (varIndex - 1) + "\n");
+                    llvm.append("  %" + (varIndex++ + 1) + " = add nsw i32 %" + (varIndex - 2) + ", %" + (varIndex - 1) + "\n", currentFunction);
                     break;
                 case SUB:
-                    bodyText.append("  %" + (varIndex++ + 1) + " = sub nsw i32 %" + (varIndex - 2) + ", %" + (varIndex - 1) + "\n");
+                    llvm.append("  %" + (varIndex++ + 1) + " = sub nsw i32 %" + (varIndex - 2) + ", %" + (varIndex - 1) + "\n", currentFunction);
                     break;
                 case MUL:
-                    bodyText.append("  %" + (varIndex++ + 1) + " = mul nsw i32 %" + (varIndex - 2) + ", %" + (varIndex - 1) + "\n");
+                    llvm.append("  %" + (varIndex++ + 1) + " = mul nsw i32 %" + (varIndex - 2) + ", %" + (varIndex - 1) + "\n", currentFunction);
                     break;
             }
-            bodyText.append("  store i32 %" + varIndex++ + ", i32* %" + resultIndex + "\n");
-            bodyText.append("  %" + (varIndex) + " = load i32, i32* %" + resultIndex + "\n\n");
+            llvm.append("  store i32 %" + varIndex++ + ", i32* %" + resultIndex + "\n", currentFunction);
+            llvm.append("  %" + (varIndex) + " = load i32, i32* %" + resultIndex + "\n\n", currentFunction);
             result = new UnnamedVarExpression(ObjectType.VARIABLE, DataType.INT, varIndex);
         }
 
@@ -393,10 +504,10 @@ public class LLVMGenerator {
         switch (dataType) {
             case NONE:
             case INT:
-                bodyText.append("  %" + resultIndex + " = alloca i32 \n");
+                llvm.append("  %" + resultIndex + " = alloca i32 \n", currentFunction);
                 break;
             case REAL:
-                bodyText.append("  %" + resultIndex + " = alloca double \n");
+                llvm.append("  %" + resultIndex + " = alloca double \n", currentFunction);
                 break;
             case CHAR:
                 break;
@@ -414,10 +525,10 @@ public class LLVMGenerator {
                     switch (dataType) {
                         case NONE:
                         case INT:
-                            bodyText.append("  %" + varIndex + " = load i32, i32* " + fullName + "\n");
+                            llvm.append("  %" + varIndex + " = load i32, i32* " + fullName + "\n", currentFunction);
                             break;
                         case REAL:
-                            bodyText.append("  %" + varIndex + " = load double, double* " + fullName + "\n");
+                            llvm.append("  %" + varIndex + " = load double, double* " + fullName + "\n", currentFunction);
                             break;
                         case CHAR:
                             break;
@@ -451,21 +562,21 @@ public class LLVMGenerator {
                     arrayLength = ((GlobalVarExpression) array).getIndex();
 
                     index = ((UnnamedVarExpression) ((GlobalVarExpression) expression).getLength()).getIndex();
-                    bodyText.append("  %" + varIndex++ + " = load i32, i32* %" + index + "\n");
-                    bodyText.append("  %" + varIndex++ + " = sext i32 %" + (varIndex - 2) + " to i64 \n");
+                    llvm.append("  %" + varIndex++ + " = load i32, i32* %" + index + "\n", currentFunction);
+                    llvm.append("  %" + varIndex++ + " = sext i32 %" + (varIndex - 2) + " to i64 \n", currentFunction);
                     textValue = "%" + (varIndex + 1);
 
                     switch (dataType) {
                         case NONE:
                         case INT:
                             fullName = "getelementptr inbounds [" + arrayLength + " x i32], [" + arrayLength + " x i32]* @var_" + arrayName + ", i64 0, i64 %" + (varIndex - 1) + "";
-                            bodyText.append("  %" + varIndex++ + " = " + fullName + "\n");
-                            bodyText.append("  %" + varIndex + " = load i32, i32* %" + (varIndex - 1) + "\n");
+                            llvm.append("  %" + varIndex++ + " = " + fullName + "\n", currentFunction);
+                            llvm.append("  %" + varIndex + " = load i32, i32* %" + (varIndex - 1) + "\n", currentFunction);
                             break;
                         case REAL:
                             fullName = "getelementptr inbounds [" + arrayLength + " x double], [" + arrayLength + " x double]* @var_" + arrayName + ", i64 0, i64 %" + (varIndex - 1) + "";
-                            bodyText.append("  %" + varIndex++ + " = " + fullName + "\n");
-                            bodyText.append("  %" + varIndex + " = load double, double* %" + (varIndex - 1) + "\n");
+                            llvm.append("  %" + varIndex++ + " = " + fullName + "\n", currentFunction);
+                            llvm.append("  %" + varIndex + " = load double, double* %" + (varIndex - 1) + "\n", currentFunction);
                             break;
                         case CHAR:
                             break;
@@ -478,10 +589,10 @@ public class LLVMGenerator {
         switch (dataType) {
             case NONE:
             case INT:
-                bodyText.append("  store i32 " + textValue + ", i32* %" + resultIndex + "\n\n");
+                llvm.append("  store i32 " + textValue + ", i32* %" + resultIndex + "\n\n", currentFunction);
                 break;
             case REAL:
-                bodyText.append("  store double " + textValue + ", double* %" + resultIndex + "\n\n");
+                llvm.append("  store double " + textValue + ", double* %" + resultIndex + "\n\n", currentFunction);
                 break;
             case CHAR:
                 break;
@@ -498,15 +609,22 @@ public class LLVMGenerator {
 
         switch (newType) {
             case INT:
-
+                llvm.append("  %" + resultIndex + " = alloca i32 \n");
+                switch (previousType) {
+                    case REAL:
+                        llvm.append("  %" + (varIndex++) + " = load double, double* %" + index + "\n", currentFunction);
+                        llvm.append("  %" + (varIndex++) + " = fptosi double %" + (varIndex - 2) + " to i32 \n", currentFunction);
+                        llvm.append("  store i32 %" + (varIndex - 1) + ", i32* %" + resultIndex + "\n\n", currentFunction);
+                        break;
+                }
                 break;
             case REAL:
-                bodyText.append("  %" + resultIndex + " = alloca double \n");
+                llvm.append("  %" + resultIndex + " = alloca double \n");
                 switch (previousType) {
                     case INT:
-                        bodyText.append("  %" + (varIndex++) + " = load i32, i32* %" + index + "\n");
-                        bodyText.append("  %" + (varIndex++) + " = sitofp i32 %" + (varIndex - 2) + " to double \n");
-                        bodyText.append("  store double %" + (varIndex - 1) + ", double* %" + resultIndex + "\n\n");
+                        llvm.append("  %" + (varIndex++) + " = load i32, i32* %" + index + "\n", currentFunction);
+                        llvm.append("  %" + (varIndex++) + " = sitofp i32 %" + (varIndex - 2) + " to double \n", currentFunction);
+                        llvm.append("  store double %" + (varIndex - 1) + ", double* %" + resultIndex + "\n\n", currentFunction);
                         break;
                 }
                 break;
@@ -526,14 +644,14 @@ public class LLVMGenerator {
         switch (dataType) {
             case NONE:
             case INT:
-                bodyText.append("  %" + varIndex + " = load i32, i32* %" + memoryIndex + "\n");
+                llvm.append("  %" + varIndex + " = load i32, i32* %" + memoryIndex + "\n", currentFunction);
                 varIndex++;
-                bodyText.append("  %" + varIndex + " = call i32 (i8* , ...) @printf(i8* getelementptr inbounds ([4 x i8], [4 x i8]*" + systemVariables.get("printInt") + ", i32 0, i32 0), i32 %" + (varIndex - 1) + ")\n\n");
+                llvm.append("  %" + varIndex + " = call i32 (i8* , ...) @printf(i8* getelementptr inbounds ([4 x i8], [4 x i8]*" + systemVariables.get("printInt") + ", i32 0, i32 0), i32 %" + (varIndex - 1) + ")\n\n", currentFunction);
                 break;
             case REAL:
-                bodyText.append("  %" + varIndex + " = load double, double* %" + memoryIndex + "\n");
+                llvm.append("  %" + varIndex + " = load double, double* %" + memoryIndex + "\n", currentFunction);
                 varIndex++;
-                bodyText.append("  %" + varIndex + " = call i32 (i8* , ...) @printf(i8* getelementptr inbounds ([4 x i8], [4 x i8]*" + systemVariables.get("printReal") + ", i32 0, i32 0), double %" + (varIndex - 1) + ")\n\n");
+                llvm.append("  %" + varIndex + " = call i32 (i8* , ...) @printf(i8* getelementptr inbounds ([4 x i8], [4 x i8]*" + systemVariables.get("printReal") + ", i32 0, i32 0), double %" + (varIndex - 1) + ")\n\n", currentFunction);
                 break;
             case CHAR:
                 break;
@@ -562,12 +680,12 @@ public class LLVMGenerator {
 
             switch (dataType) {
                 case INT:
-                    headerText.append(fullName + " = global i32 0");
-                    bodyText.append("  %" + varIndex + " = call i32 (i8*, ...) @scanf(i8* getelementptr inbounds ([3 x i8], [3 x i8]* " + systemVariables.get("scanInt") + ", i32 0, i32 0), i32* " + fullName + ")\n\n");
+                    llvm.append(fullName + " = global i32 0", currentFunction);
+                    llvm.append("  %" + varIndex + " = call i32 (i8*, ...) @scanf(i8* getelementptr inbounds ([3 x i8], [3 x i8]* " + systemVariables.get("scanInt") + ", i32 0, i32 0), i32* " + fullName + ")\n\n", currentFunction);
                     break;
                 case REAL:
-                    headerText.append(fullName + " = global double 0.0");
-                    bodyText.append("  %" + varIndex + " = call i32 (i8*, ...) @scanf(i8* getelementptr inbounds ([4 x i8], [4 x i8]* " + systemVariables.get("scanReal") + ", i32 0, i32 0), double* " + fullName + ")\n\n");
+                    llvm.append(fullName + " = global double 0.0", currentFunction);
+                    llvm.append("  %" + varIndex + " = call i32 (i8*, ...) @scanf(i8* getelementptr inbounds ([4 x i8], [4 x i8]* " + systemVariables.get("scanReal") + ", i32 0, i32 0), double* " + fullName + ")\n\n", currentFunction);
                     break;
                 case CHAR:
                     break;

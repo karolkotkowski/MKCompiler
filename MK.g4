@@ -1,24 +1,28 @@
 grammar MK;
 
-file                    : (block | statement  | function_declaration)* EOF;
+file                    : (statement  | function_declaration)* EOF;
 
 block                   : OPENBLOCK statement* CLOSEBLOCK;
 
 statement               : (variable_declaration | variable_assignment | command | array_declaration | array_assignment) ENDSTATEMENT;
 
-command                 : print | scan | return;
+command                 : print | scan | returning;
 
 variable_declaration    : DECLAREVARIABLE NAME (ASSIGN expression)?;
 variable_assignment     : NAME ASSIGN expression;
 
-function_declaration    : INTSTATEMENT function_declaration1    #int_function
-                          | REALSTATEMENT function_declaration1 #real_function
+function_declaration    : function_declaration1 block;
+function_declaration1   : INTSTATEMENT function_declaration2    #int_function_declaration
+                          | REALSTATEMENT function_declaration2 #real_function_declaration
                           ;
-function_declaration1   : DECLAREVARIABLE NAME arguments block;
+function_declaration2   : DECLAREVARIABLE NAME arguments;
 function1               : NAME arguments;
-return                  : RETURN expression;
+returning               : RETURN expression;
 
-arguments               : OPENBRACKET (expression (NEXTELEMENT expression)* )* CLOSEBRACKET;
+arguments               : OPENBRACKET (argument (NEXTELEMENT argument)* )* CLOSEBRACKET;
+argument                : INTSTATEMENT NAME         #int_argument
+                          | REALSTATEMENT NAME      #real_argument
+                          ;
 
 expression              : expression1                       #single1
                           | expression ADD expression1      #add
