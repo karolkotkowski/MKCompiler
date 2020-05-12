@@ -1,3 +1,12 @@
-real lady a[3] = {10.1, 20.2, 30.3};
-lady b = a[1] - 100 * 2;
-whisper b;
+lady c = 50;
+
+int lady f(int a, int b) {
+  whisper 5;
+  give back 100;
+}
+
+int lady main() {
+  c = f(1, 2);
+  whisper c;
+  give back 0;
+}

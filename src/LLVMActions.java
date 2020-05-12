@@ -11,11 +11,58 @@ public class LLVMActions extends MKBaseListener {
     private int line = 0;
     private String fileName;
     private boolean inFunction = false; //flag for checking if currently in function body
-    private boolean returning = false;  //flag for checking if a return statement occured in a function
+    private boolean returning = false;  //flag for checking if a return statement occurred in a function
     private HashMap<String, GlobalVarExpression> functions = new HashMap<String, GlobalVarExpression>();
 
     public LLVMActions(String fileName) {
         this.fileName = fileName;
+    }
+
+    private int countArguments(int childCount) {
+        int argumentsCount = 0;
+        if (childCount > 2)
+            argumentsCount = (int) (childCount * 0.5 - 0.5);
+        return argumentsCount;
+    }
+
+    private UnnamedVarExpression callFunction(String name, MKParser.Call_argumentsContext argumentsContext) {
+        if (!functions.containsKey(name))
+            printError("calling non-existing function " + name + "()");
+        if ("main".equals(name))
+            printError("calling main function not allowed");
+        GlobalVarExpression function = functions.get(name);
+
+        int expectedArgumentsCount = function.getIndex();
+        int argumentsCount = countArguments(argumentsContext.getChildCount());
+        if (expectedArgumentsCount != argumentsCount)
+            printError("function " + name + "() called with " + argumentsCount + " argument(s). Expected: " + expectedArgumentsCount);
+
+        List<Expression> arguments = new ArrayList<>(argumentsCount);
+        for (int i = 0; i < argumentsCount; i++) {
+            arguments.add(expressionStack.pop());
+        }
+        Collections.reverse(arguments);
+
+        return generator.callFunction(function, arguments);
+    }
+
+    @Override
+    public void exitFunction(MKParser.FunctionContext context) {
+        line = context.getStart().getLine();
+        String name = context.NAME().getText();
+        MKParser.Call_argumentsContext argumentsContext = context.getChild(MKParser.Call_argumentsContext.class, 0);
+
+        UnnamedVarExpression functionValue = callFunction(name, argumentsContext);
+        expressionStack.push(functionValue);
+    }
+
+    @Override
+    public void exitFunction_call(MKParser.Function_callContext context) {
+        line = context.getStart().getLine();
+        String name = context.NAME().getText();
+        MKParser.Call_argumentsContext argumentsContext = context.getChild(MKParser.Call_argumentsContext.class, 0);
+
+        callFunction(name, argumentsContext);
     }
 
     @Override
@@ -57,14 +104,12 @@ public class LLVMActions extends MKBaseListener {
         MKParser.ArgumentsContext context3 = context2.getChild(MKParser.ArgumentsContext.class, 0);
         int childCount = context3.getChildCount();
 
-        int argumentsCount = 0;
-        if (childCount > 2)
-            argumentsCount = (int) (childCount * 0.5 - 0.5);
+        int argumentsCount = countArguments(childCount);
 
         if (inFunction)
             printError("defining function not allowed inside another function");
         if (functions.containsKey(name))
-            printError("defining already existing function");
+            printError("defining already existing function" + name + "()");
 
         List<Expression> arguments = new ArrayList<Expression>(argumentsCount);
         for (int i = 0; i < argumentsCount; i++) {

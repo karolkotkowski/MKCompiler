@@ -31,6 +31,30 @@ public class LLVMGenerator {
         System.out.println(text.toString());
     }
 
+    public UnnamedVarExpression callFunction(GlobalVarExpression function, List<Expression> arguments) {
+        DataType dataType = function.getDataType();
+        String name = function.getName();
+        int argumentsCount = function.getIndex();
+
+        Iterator<Expression> argumentsIterator = arguments.iterator();
+        Expression argument;
+        StringBuilder buffer = new StringBuilder();
+        while (argumentsIterator.hasNext()) {
+            argument = argumentsIterator.next();
+            allocate(argument);
+            llvm.append("  %" + varIndex + " = load " + dataType.toLLVM() + ", " + dataType.toLLVM() + "* %" + (varIndex - 1) + "\n\n", currentFunction);
+            buffer.append(argument.getDataType().toLLVM() + " %" + varIndex);
+            if (argumentsIterator.hasNext())
+                buffer.append(", ");
+            varIndex++;
+        }
+
+        int resultIndex = varIndex++;
+        llvm.append("  %" + resultIndex + " = call " + dataType.toLLVM() + " @func_" + name + "(" + buffer + ")\n", currentFunction);
+
+        return new UnnamedVarExpression(ObjectType.VARIABLE, dataType, resultIndex);
+    }
+
     public void declareFunction(GlobalVarExpression function, List<Expression> arguments) {
         DataType dataType = function.getDataType();
         String name = function.getName();
@@ -308,8 +332,7 @@ public class LLVMGenerator {
                             break;
                     }
                     varIndex++;
-                } else {
-                    if (rightExpressionClass.equals(ValueExpression.class)) {
+                } else if (rightExpressionClass.equals(ValueExpression.class)) {
                         textValue = ((ValueExpression) rightExpression).getValue().toString();
                         switch (rightDataType) {
                             case NONE:
@@ -322,8 +345,7 @@ public class LLVMGenerator {
                             case CHAR:
                                 break;
                         }
-                    } else {
-                        if (rightExpressionClass.equals(UnnamedVarExpression.class)) {
+                } else if (rightExpressionClass.equals(UnnamedVarExpression.class)) {
                             rightIndex = ((UnnamedVarExpression) rightExpression).getIndex();
                             switch (rightDataType) {
                                 case NONE:
@@ -336,8 +358,6 @@ public class LLVMGenerator {
                                 case CHAR:
                                     break;
                             }
-                        }
-                    }
                 }
                 break;
             case CONSTANT:

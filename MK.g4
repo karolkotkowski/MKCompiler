@@ -4,7 +4,7 @@ file                    : (statement  | function_declaration)* EOF;
 
 block                   : OPENBLOCK statement* CLOSEBLOCK;
 
-statement               : (variable_declaration | variable_assignment | command | array_declaration | array_assignment) ENDSTATEMENT;
+statement               : (variable_declaration | variable_assignment | command | array_declaration | array_assignment | function_call) ENDSTATEMENT;
 
 command                 : print | scan | returning;
 
@@ -16,10 +16,11 @@ function_declaration1   : INTSTATEMENT function_declaration2    #int_function_de
                           | REALSTATEMENT function_declaration2 #real_function_declaration
                           ;
 function_declaration2   : DECLAREVARIABLE NAME arguments;
-function1               : NAME arguments;
+function_call           : NAME call_arguments;
 returning               : RETURN expression;
 
 arguments               : OPENBRACKET (argument (NEXTELEMENT argument)* )* CLOSEBRACKET;
+call_arguments          : OPENBRACKET (expression (NEXTELEMENT expression)* )* CLOSEBRACKET;
 argument                : INTSTATEMENT NAME         #int_argument
                           | REALSTATEMENT NAME      #real_argument
                           ;
@@ -39,7 +40,7 @@ expression2             : bracket_expression                #bracket
                           | CHAR                            #char
                           | STR                             #str
                           | array_element1                  #array_element
-                          | function1                       #function
+                          | NAME call_arguments             #function
                           ;
 bracket_expression      : OPENBRACKET expression CLOSEBRACKET;
 
