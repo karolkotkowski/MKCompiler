@@ -73,18 +73,18 @@ CLOSEARRAY              : ']';
 
 ASSIGN                  : '=';
 
-RETURN                  : 'give back';
+RETURN                  : 'give ';
 
-DECLAREVARIABLE         : 'lady';
+DECLAREVARIABLE         : 'lady ';
 
-PRINT                   : 'whisper';
-SCAN                    : 'hear';
+PRINT                   : 'whisper ';
+SCAN                    : 'hear ';
 
-INTSTATEMENT            : 'int';
-REALSTATEMENT           : 'real';
-STRSTATEMENT            : 'str';
+INTSTATEMENT            : 'int ';
+REALSTATEMENT           : 'real ';
+STRSTATEMENT            : 'str ';
 
-NAME                    : [a-zA-Z] | [a-zA-Z][a-zA-Z0-9]+;
+NAME                    : [a-zA-Z][a-zA-Z0-9]*;
 
 INT                     : [-+]?DIGIT+;
 REAL                    : [-+]?DIGIT+ '.' DIGIT+;

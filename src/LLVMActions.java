@@ -1,18 +1,14 @@
-import com.sun.corba.se.spi.ior.ObjectKey;
-import com.sun.javaws.jnl.RContentDesc;
-
 import java.util.*;
 
 public class LLVMActions extends MKBaseListener {
-    private HashMap<String, GlobalVarExpression> globalVariables = new HashMap<String, GlobalVarExpression>();
-    private LLVMGenerator generator = new LLVMGenerator(this, globalVariables);
-    private Stack<Expression> expressionStack = new Stack<Expression>();
-    private Configuration configuration = new Configuration();
+    private final HashMap<String, GlobalVarExpression> globalVariables = new HashMap<>();
+    private final LLVMGenerator generator = new LLVMGenerator(this, globalVariables);
+    private final Stack<Expression> expressionStack = new Stack<>();
     private int line = 0;
-    private String fileName;
+    private final String fileName;
     private boolean inFunction = false; //flag for checking if currently in function body
     private boolean returning = false;  //flag for checking if a return statement occurred in a function
-    private HashMap<String, GlobalVarExpression> functions = new HashMap<String, GlobalVarExpression>();
+    private final HashMap<String, GlobalVarExpression> functions = new HashMap<>();
 
     public LLVMActions(String fileName) {
         this.fileName = fileName;
@@ -111,7 +107,7 @@ public class LLVMActions extends MKBaseListener {
         if (functions.containsKey(name))
             printError("defining already existing function" + name + "()");
 
-        List<Expression> arguments = new ArrayList<Expression>(argumentsCount);
+        List<Expression> arguments = new ArrayList<>(argumentsCount);
         for (int i = 0; i < argumentsCount; i++) {
             arguments.add(expressionStack.pop());
         }
@@ -128,7 +124,7 @@ public class LLVMActions extends MKBaseListener {
     public void exitFunction_declaration(MKParser.Function_declarationContext context) {
         line = context.getStart().getLine();
         if (!returning)
-            printError("missing give back statement in function body");
+            printError("missing give statement in function body");
         inFunction = false;
         returning = false;
         generator.endFunctionDefinition();
@@ -140,7 +136,7 @@ public class LLVMActions extends MKBaseListener {
         Expression expression = expressionStack.pop();
 
         if (!inFunction)
-            printError("give back statement used while not in function body");
+            printError("give statement used while not in function body");
         returning = true;
 
         generator.doReturning(expression);
@@ -246,10 +242,9 @@ public class LLVMActions extends MKBaseListener {
 
         String name = context.NAME().getText();
         Expression index = expressionStack.pop();
-        GlobalVarExpression array = null;
 
         if (globalVariables.containsKey(name)) {
-            array = globalVariables.get(name);
+            GlobalVarExpression array = globalVariables.get(name);
             expressionStack.push(new GlobalVarExpression(ObjectType.ARRAY_ELEMENT, array.getDataType(), name, index));
         } else
             printError("using non-existing array lady " + name);
@@ -290,9 +285,6 @@ public class LLVMActions extends MKBaseListener {
             generator.assignVariable(leftExpression, rightExpression);
         }
 
-
-
-
     }
 
     @Override
@@ -332,7 +324,7 @@ public class LLVMActions extends MKBaseListener {
     }
 
     private void scan(DataType dataType, String name) {
-        Expression expression = null;
+        Expression expression;
 
         expression = generator.getLocalVariable(name);
         if (expression == null) {
@@ -351,7 +343,6 @@ public class LLVMActions extends MKBaseListener {
         line = context.getStart().getLine();
         DataType dataType = DataType.INT;
         MKParser.Array_declaration1Context context1 = context.getChild(MKParser.Array_declaration1Context.class, 0);
-        //System.out.println(context.getChild(MKParser.Array_declaration1Context.class, 0));
 
         declareArray(context1, dataType);
     }
@@ -372,7 +363,7 @@ public class LLVMActions extends MKBaseListener {
         if (context.getChild(MKParser.Array_lengthContext.class, 0) != null)
             arrayLength = Integer.parseInt(context.getChild(MKParser.Array_lengthContext.class, 0).INT().getText());
 
-        List<Expression> elements = new ArrayList<Expression>(arrayLength);
+        List<Expression> elements = new ArrayList<>(arrayLength);
         if (context.ASSIGN() != null) {
             int elementCount = 0;
             while (!expressionStack.empty()) {
