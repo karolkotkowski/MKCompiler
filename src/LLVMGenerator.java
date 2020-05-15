@@ -5,7 +5,8 @@ import java.util.*;
 public class LLVMGenerator {
 
     private HashMap<String, GlobalVarExpression> globalVariables;
-    private HashMap<String, Set<String>> localVariables = new HashMap<String, Set<String>>();
+    private HashMap<String, HashMap<String, NamedVarExpression>> localVariables = new HashMap<>();
+    private HashMap<String, List<DataType>> functionArguments = new HashMap<>();
     private LLVMBuilder llvm = new LLVMBuilder();
     private int varIndex = 1;
     private LLVMActions actions;
@@ -19,6 +20,14 @@ public class LLVMGenerator {
         this.globalVariables = globalVariables;
     }
 
+    public NamedVarExpression getLocalVariable(String name) {
+        Map<String, NamedVarExpression> thisVariables = localVariables.get(currentFunction.getName());
+        if (thisVariables.containsKey(name))
+            return thisVariables.get(name);
+        else
+            return null;
+    }
+
     public void generateOutput() {
         StringBuilder text = new StringBuilder();
         text.append("declare i32 @printf(i8*, ...)\n");
@@ -27,6 +36,7 @@ public class LLVMGenerator {
         text.append(systemVariables.get("printReal") + " = constant [4 x i8] c\"%f\\0A\\00\"\n");
         text.append(systemVariables.get("scanInt") + " = constant [3 x i8] c\"%d\\00\"\n");
         text.append(systemVariables.get("scanReal") + " = constant [4 x i8] c\"%lf\\00\"\n");
+        text.append("\n");
         text.append(llvm);
         System.out.println(text.toString());
     }
@@ -35,22 +45,32 @@ public class LLVMGenerator {
         DataType dataType = function.getDataType();
         String name = function.getName();
         int argumentsCount = function.getIndex();
+        List<DataType> thisArguments = functionArguments.get(name);
 
         Iterator<Expression> argumentsIterator = arguments.iterator();
         Expression argument;
+        DataType argumentType;
+        DataType expectedType;
         StringBuilder buffer = new StringBuilder();
+        int i = 0;
         while (argumentsIterator.hasNext()) {
             argument = argumentsIterator.next();
+            argumentType = argument.getDataType();
+
+            expectedType = thisArguments.get(i);
+            if (!expectedType.equals(argumentType))
+                actions.printError("argument no. " + (i + 1) + " type is " + argumentType + ". Expected: " + expectedType);
+
             allocate(argument);
-            llvm.append("  %" + varIndex + " = load " + dataType.toLLVM() + ", " + dataType.toLLVM() + "* %" + (varIndex - 1) + "\n\n", currentFunction);
-            buffer.append(argument.getDataType().toLLVM() + " %" + varIndex);
+            llvm.append("  %" + varIndex + " = load " + argumentType.toLLVM() + ", " + argumentType.toLLVM() + "* %" + (varIndex - 2) + "\n\n", currentFunction);
+            buffer.append(argumentType.toLLVM() + " %" + varIndex);
             if (argumentsIterator.hasNext())
                 buffer.append(", ");
             varIndex++;
         }
 
         int resultIndex = varIndex++;
-        llvm.append("  %" + resultIndex + " = call " + dataType.toLLVM() + " @func_" + name + "(" + buffer + ")\n", currentFunction);
+        llvm.append("  %" + resultIndex + " = call " + dataType.toLLVM() + " @func_" + name + "(" + buffer + ")\n\n", currentFunction);
 
         return new UnnamedVarExpression(ObjectType.VARIABLE, dataType, resultIndex);
     }
@@ -79,7 +99,9 @@ public class LLVMGenerator {
             llvm.append(definition);
         llvm.holdBuffer();
 
-        localVariables.put(name, new HashSet<String>());
+        localVariables.put(name, new HashMap<String, NamedVarExpression>());
+        functionArguments.put(name, new ArrayList<>());
+        List<DataType> thisArguments = functionArguments.get(name);
         StringBuilder types = new StringBuilder();
         Iterator<Expression> iterator = arguments.iterator();
         Expression argument;
@@ -101,6 +123,8 @@ public class LLVMGenerator {
             }
             if (iterator.hasNext())
                 types.append(", ");
+
+            thisArguments.add(argumentType);
         }
         varIndex++;
         String buffer = llvm.getBuffer();
@@ -181,27 +205,31 @@ public class LLVMGenerator {
                     }
                 } else if (expressionClass.equals(NamedVarExpression.class)) {
                     name = ((NamedVarExpression) expression).getName();
+                    index = ((NamedVarExpression) expression).getIndex();
 
                     if (currentFunction == null)
                         actions.printError("declaring local variable " + name + " outside a function body");
 
                     String functionName = currentFunction.getName();
-                    Set<String> localNames = localVariables.get(functionName);
+                    Map<String, NamedVarExpression> thisVariables = localVariables.get(functionName);
 
-                    if (localNames.contains(name))
+                    if (thisVariables.containsKey(name) && index == 0)
                         actions.printError("declaring already existing lady " + name + " in function " + functionName + "()");
-                    localNames.add(name);
+                    thisVariables.put(name, (NamedVarExpression) expression);
 
-                    llvm.append("  %var_" + name + " = alloca ", currentFunction);
-                    switch (dataType) {
-                        case INT:
-                            llvm.append("i32", currentFunction);
-                            break;
-                        case REAL:
-                            llvm.append("double", currentFunction);
-                            break;
+                    if (index > 0 || dataType == DataType.NONE) {
+                        llvm.append("  %var_" + name + index + " = alloca ", currentFunction);
+                        switch (dataType) {
+                            case NONE:
+                            case INT:
+                                llvm.append("i32", currentFunction);
+                                break;
+                            case REAL:
+                                llvm.append("double", currentFunction);
+                                break;
+                        }
+                        llvm.append("\n", currentFunction);
                     }
-                    llvm.append("\n");
 
                 }
                 break;
@@ -254,7 +282,18 @@ public class LLVMGenerator {
                             break;
                     }
                 } else if (leftExpressionClass.equals(NamedVarExpression.class)) {
-                    leftFullName = "%var_" + ((NamedVarExpression) leftExpression).getName();
+                    leftName = ((NamedVarExpression) leftExpression).getName();
+                    //leftIndex = ((NamedVarExpression) leftExpression).getIndex();
+                    Map<String, NamedVarExpression> thisVariables = localVariables.get(currentFunction.getName());
+
+                    if (thisVariables.containsKey(leftName)) {
+                        leftIndex = thisVariables.get(leftName).getIndex();
+                        leftIndex++;
+                        leftExpression = new NamedVarExpression(leftObjectType, rightDataType, leftName, leftIndex);
+                        declareVariable(leftExpression);
+                        leftFullName = "%var_" + leftName + leftIndex;
+                    } else
+                        actions.printError("assigning to non-existing lady " + leftName);
                 }
                 break;
             case CONSTANT:
@@ -332,6 +371,29 @@ public class LLVMGenerator {
                             break;
                     }
                     varIndex++;
+
+                } else if (rightExpressionClass.equals(NamedVarExpression.class)) {
+                  rightName = ((NamedVarExpression) rightExpression).getName();
+                  rightIndex = ((NamedVarExpression) rightExpression).getIndex();
+                  Map<String, NamedVarExpression> thisVariables = localVariables.get(currentFunction.getName());
+                  if (!thisVariables.containsKey(rightName))
+                      actions.printError("assigning value from non-existing lady " + rightName);
+
+                    switch (rightDataType) {
+                        case NONE:
+                        case INT:
+                            llvm.append("  %" + varIndex + " = load i32, i32* %var_" + rightName + rightIndex + "\n", currentFunction);
+                            llvm.append("  store i32 %" + varIndex + ", i32* " + leftFullName + "\n\n", currentFunction);
+                            break;
+                        case REAL:
+                            llvm.append("  %" + varIndex + " = load double, double* %var_" + rightName + rightIndex + "\n", currentFunction);
+                            llvm.append("  store double %" + varIndex + ", double* " + leftFullName + "\n\n", currentFunction);
+                            break;
+                        case CHAR:
+                            break;
+                    }
+                    varIndex++;
+
                 } else if (rightExpressionClass.equals(ValueExpression.class)) {
                         textValue = ((ValueExpression) rightExpression).getValue().toString();
                         switch (rightDataType) {
@@ -554,15 +616,33 @@ public class LLVMGenerator {
                             break;
                     }
                     varIndex++;
-                } else {
-                    if (expressionClass.equals(ValueExpression.class)) {
-                        textValue = ((ValueExpression) expression).getValue().toString();
-                    } else {
-                        if (expressionClass.equals(UnnamedVarExpression.class)) {
-                            index = ((UnnamedVarExpression) expression).getIndex();
-                            textValue = "%" + index;
-                        }
+                } else if (expressionClass.equals(NamedVarExpression.class)) {
+                    arrayName = ((NamedVarExpression) expression).getName();
+                    index = ((NamedVarExpression) expression).getIndex();
+                    fullName = "%var_" + arrayName + index;
+                    textValue = "%" + varIndex;
+                    Map<String, NamedVarExpression> thisVariables = localVariables.get(currentFunction.getName());
+                    if (!thisVariables.containsKey(arrayName))
+                        actions.printError("using non-existing lady " + arrayName);
+                    switch (dataType) {
+                        case NONE:
+                        case INT:
+                            llvm.append("  %" + varIndex + " = load i32, i32* " + fullName + "\n", currentFunction);
+                            break;
+                        case REAL:
+                            llvm.append("  %" + varIndex + " = load double, double* " + fullName + "\n", currentFunction);
+                            break;
+                        case CHAR:
+                            break;
                     }
+                    varIndex++;
+                } else if (expressionClass.equals(ValueExpression.class)) {
+                    llvm.append("  %" + varIndex++ + " = alloca i32 \n", currentFunction);
+                    textValue = ((ValueExpression) expression).getValue().toString();
+                } else if (expressionClass.equals(UnnamedVarExpression.class)) {
+                    llvm.append("  %" + varIndex++ + " = alloca i32 \n", currentFunction);
+                    index = ((UnnamedVarExpression) expression).getIndex();
+                    textValue = "%" + index;
                 }
                 break;
             case CONSTANT:
@@ -690,27 +770,53 @@ public class LLVMGenerator {
 
     public void scan(DataType dataType, Expression expression) {
         Object expressionClass = expression.getClass();
+        String name;
+        int index;
+        String fullName = null;
 
         if (expressionClass.equals(GlobalVarExpression.class)) {
-            String name = ((GlobalVarExpression) expression).getName();
-            int index = ((GlobalVarExpression) expression).getIndex() + 1;
-            String fullName = "@var_" + name + index;
+            name = ((GlobalVarExpression) expression).getName();
+            index = ((GlobalVarExpression) expression).getIndex() + 1;
+            fullName = "@var_" + name + index;
             GlobalVarExpression globalVarExpression = new GlobalVarExpression(ObjectType.VARIABLE, dataType, name, index);
             globalVariables.put(name, globalVarExpression);
 
             switch (dataType) {
                 case INT:
-                    llvm.append(fullName + " = global i32 0", currentFunction);
+                    llvm.appendToHeader(fullName + " = global i32 0 \n");
                     llvm.append("  %" + varIndex + " = call i32 (i8*, ...) @scanf(i8* getelementptr inbounds ([3 x i8], [3 x i8]* " + systemVariables.get("scanInt") + ", i32 0, i32 0), i32* " + fullName + ")\n\n", currentFunction);
                     break;
                 case REAL:
-                    llvm.append(fullName + " = global double 0.0", currentFunction);
+                    llvm.appendToHeader(fullName + " = global double 0.0 \n");
+                    llvm.append("  %" + varIndex + " = call i32 (i8*, ...) @scanf(i8* getelementptr inbounds ([4 x i8], [4 x i8]* " + systemVariables.get("scanReal") + ", i32 0, i32 0), double* " + fullName + ")\n\n", currentFunction);
+                    break;
+                case CHAR:
+                    break;
+            }
+
+        } else if (expressionClass.equals(NamedVarExpression.class)) {
+            name = ((NamedVarExpression) expression).getName();
+            index = ((NamedVarExpression) expression).getIndex() + 1;
+            fullName = "%var_" + name + index;
+            NamedVarExpression namedVarExpression = new NamedVarExpression(ObjectType.VARIABLE, dataType, name, index);
+            Map<String, NamedVarExpression> thisVariables = localVariables.get(currentFunction.getName());
+            thisVariables.put(name, namedVarExpression);
+
+            switch (dataType) {
+                case INT:
+                    llvm.append("  " + fullName + " = alloca i32 \n", currentFunction);
+                    llvm.append("  %" + varIndex + " = call i32 (i8*, ...) @scanf(i8* getelementptr inbounds ([3 x i8], [3 x i8]* " + systemVariables.get("scanInt") + ", i32 0, i32 0), i32* " + fullName + ")\n\n", currentFunction);
+                    break;
+                case REAL:
+                    llvm.append("  " + fullName + " = alloca double \n", currentFunction);
                     llvm.append("  %" + varIndex + " = call i32 (i8*, ...) @scanf(i8* getelementptr inbounds ([4 x i8], [4 x i8]* " + systemVariables.get("scanReal") + ", i32 0, i32 0), double* " + fullName + ")\n\n", currentFunction);
                     break;
                 case CHAR:
                     break;
             }
         }
+
+
         varIndex++;
     }
 

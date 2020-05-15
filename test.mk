@@ -1,12 +1,25 @@
-lady c = 50;
+lady common = 5;
 
-int lady f(int a, int b) {
-  whisper 5;
-  give back 100;
+int lady f1(int v) {
+  common = common + v;
+  give back 0;
+}
+
+real lady f2(real v) {
+  common = common + v;
+  give back 0.0;
+}
+
+int lady print(real print) {
+  whisper print;
+  give back 0;
 }
 
 int lady main() {
-  c = f(1, 2);
-  whisper c;
+  lady a = 1;
+  lady b = 1.5;
+  f1(a);
+  f2(b);
+  print(common);
   give back 0;
 }

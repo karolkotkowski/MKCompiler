@@ -70,7 +70,7 @@ public class LLVMActions extends MKBaseListener {
         line = context.getStart().getLine();
         String name = context.NAME().getText();
 
-        NamedVarExpression argument = new NamedVarExpression(ObjectType.VARIABLE, DataType.INT, name);
+        NamedVarExpression argument = new NamedVarExpression(ObjectType.VARIABLE, DataType.INT, name, 0);
         expressionStack.push(argument);
     }
 
@@ -79,7 +79,7 @@ public class LLVMActions extends MKBaseListener {
         line = context.getStart().getLine();
         String name = context.NAME().getText();
 
-        NamedVarExpression argument = new NamedVarExpression(ObjectType.VARIABLE, DataType.REAL, name);
+        NamedVarExpression argument = new NamedVarExpression(ObjectType.VARIABLE, DataType.REAL, name, 0);
         expressionStack.push(argument);
     }
 
@@ -218,11 +218,13 @@ public class LLVMActions extends MKBaseListener {
 
         String name = context.NAME().getText();
 
-        Expression expression = null;
-        if (globalVariables.containsKey(name)) {
-            expression = globalVariables.get(name);
-        } else {
-            printError("using non-existing lady " + name);
+        Expression expression = generator.getLocalVariable(name);
+        if (expression == null) {
+            if (globalVariables.containsKey(name)) {
+                expression = globalVariables.get(name);
+            } else {
+                printError("using non-existing lady " + name);
+            }
         }
 
         expressionStack.push(expression);
@@ -261,18 +263,34 @@ public class LLVMActions extends MKBaseListener {
 
         String name = context.NAME().getText();
         ObjectType objectType = ObjectType.VARIABLE;
+        DataType dataType = DataType.NONE;
+        Expression leftExpression;
 
         if (context.ASSIGN() == null) {
-            generator.declareVariable(new GlobalVarExpression(objectType, DataType.NONE, name, 0));
+            if (inFunction)
+                leftExpression = new NamedVarExpression(objectType, dataType, name, 0);
+            else
+                leftExpression = new GlobalVarExpression(objectType, dataType, name, 0);
+
+            generator.declareVariable(leftExpression);
+
+            if (inFunction)
+                generator.assignVariable(leftExpression, new ValueExpression(ObjectType.VARIABLE, DataType.INT, 0));
         } else {
             Expression rightExpression = expressionStack.pop();
-            DataType dataType = rightExpression.getDataType();
+            dataType = rightExpression.getDataType();
 
-            GlobalVarExpression leftExpression = new GlobalVarExpression(objectType, dataType, name, 0);
+            if (inFunction)
+                leftExpression = new NamedVarExpression(objectType, dataType, name, 0);
+            else
+                leftExpression = new GlobalVarExpression(objectType, dataType, name, 0);
+
             generator.declareVariable(leftExpression);
 
             generator.assignVariable(leftExpression, rightExpression);
         }
+
+
 
 
     }
@@ -316,13 +334,16 @@ public class LLVMActions extends MKBaseListener {
     private void scan(DataType dataType, String name) {
         Expression expression = null;
 
-        if (globalVariables.containsKey(name)) {
-            expression = globalVariables.get(name);
-        } else {
-            printError("getting non-existing lady " + name + " to hear");
+        expression = generator.getLocalVariable(name);
+        if (expression == null) {
+            if (globalVariables.containsKey(name)) {
+                expression = globalVariables.get(name);
+            } else {
+                printError("getting non-existing lady " + name + " to hear");
+            }
         }
 
-        generator.scan(dataType, (GlobalVarExpression) expression);
+        generator.scan(dataType, expression);
     }
 
     @Override
