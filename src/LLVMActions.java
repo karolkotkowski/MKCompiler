@@ -1,3 +1,5 @@
+import org.antlr.v4.runtime.tree.TerminalNode;
+
 import java.util.*;
 
 public class LLVMActions extends MKBaseListener {
@@ -14,6 +16,59 @@ public class LLVMActions extends MKBaseListener {
         this.fileName = fileName;
     }
 
+    @Override
+    public  void exitInstruction1(MKParser.Instruction1Context context) {
+        line = context.getStart().getLine();
+        Expression rightExpression = expressionStack.pop();
+        Expression leftExpression = expressionStack.pop();
+        String compareStatement = context.COMPARESTATEMENT().toString();
+
+        if (!inFunction)
+            printError("instruction not allowed outside a function body");
+
+        CompareType compareType;
+        switch (compareStatement) {
+            case "==":
+                compareType = CompareType.EQ;
+                break;
+            case "<":
+                compareType = CompareType.SLT;
+                break;
+            case "<=":
+                compareType = CompareType.SLE;
+                break;
+            case ">=":
+                compareType = CompareType.SGE;
+                break;
+            case ">":
+                compareType = CompareType.SGT;
+                break;
+            case "!=":
+                compareType = CompareType.NE;
+                break;
+            default:
+                compareType = null;
+        }
+
+        generator.startInstruction(leftExpression, compareType, rightExpression);
+    }
+
+    @Override
+    public void exitIf_instruction(MKParser.If_instructionContext context) {
+        line = context.getStart().getLine();
+        InstructionType instructionType = InstructionType.IF;
+
+        generator.endInstruction(instructionType);
+    }
+
+    @Override
+    public void exitWhile_instruction(MKParser.While_instructionContext context) {
+        line = context.getStart().getLine();
+        InstructionType instructionType = InstructionType.WHILE;
+
+        generator.endInstruction(instructionType);
+    }
+
     private int countArguments(int childCount) {
         int argumentsCount = 0;
         if (childCount > 2)
@@ -22,6 +77,8 @@ public class LLVMActions extends MKBaseListener {
     }
 
     private UnnamedVarExpression callFunction(String name, MKParser.Call_argumentsContext argumentsContext) {
+        if (!inFunction)
+            printError("calling function not allowed outside a function body");
         if (!functions.containsKey(name))
             printError("calling non-existing function " + name + "()");
         if ("main".equals(name))
@@ -291,10 +348,15 @@ public class LLVMActions extends MKBaseListener {
     public void exitVariable_assignment(MKParser.Variable_assignmentContext context) {
         line = context.getStart().getLine();
 
+        if (!inFunction)
+            printError("assigning to variable not allowed outside a function body");
+
         String name = context.NAME().getText();
+        Expression leftExpression = generator.getLocalVariable(name);
+        if (leftExpression == null)
+            leftExpression = new GlobalVarExpression(ObjectType.VARIABLE, DataType.NONE, name, 0);
 
         Expression rightExpression = expressionStack.pop();
-        GlobalVarExpression leftExpression = new GlobalVarExpression(ObjectType.VARIABLE, DataType.NONE, name, 0);
 
         generator.assignVariable(leftExpression, rightExpression);
     }
@@ -302,6 +364,9 @@ public class LLVMActions extends MKBaseListener {
     @Override
     public void exitPrint(MKParser.PrintContext context) {
         line = context.getStart().getLine();
+
+        if (!inFunction)
+            printError("whispering not allowed outside a function body");
 
         Expression expression = expressionStack.pop();
         generator.print(expression);
@@ -312,6 +377,9 @@ public class LLVMActions extends MKBaseListener {
         line = context.getStart().getLine();
         String name = context.NAME().getText();
 
+        if (!inFunction)
+            printError("hearing not allowed outside a function body");
+
         scan(DataType.INT, name);
     }
 
@@ -319,6 +387,9 @@ public class LLVMActions extends MKBaseListener {
     public void exitScan_real(MKParser.Scan_realContext context) {
         line = context.getStart().getLine();
         String name = context.NAME().getText();
+
+        if (!inFunction)
+            printError("whispering not allowed outside a function body");
 
         scan(DataType.REAL, name);
     }

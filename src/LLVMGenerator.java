@@ -1,5 +1,7 @@
 
 
+import com.sun.xml.internal.ws.addressing.WsaActionUtil;
+
 import java.util.*;
 
 public class LLVMGenerator {
@@ -11,6 +13,8 @@ public class LLVMGenerator {
     private int varIndex = 1;
     private final LLVMActions actions;
     private GlobalVarExpression currentFunction = null;
+    private int instructionIndex = 1;
+    private final Stack<Integer> instructionStack = new Stack<>();
 
     private final Configuration configuration = new Configuration();
     private final HashMap<String, String>  systemVariables = configuration.getSystemVariables();
@@ -36,6 +40,75 @@ public class LLVMGenerator {
         text.append("\n");
         text.append(llvm);
         System.out.println(text.toString());
+    }
+
+    public void startInstruction(Expression leftExpression, CompareType compareType, Expression rightExpression) {
+        llvm.append("  br label %compare" + instructionIndex + "\n\n", currentFunction);
+        llvm.append(" compare" + instructionIndex + ":\n", currentFunction);
+
+        leftExpression = allocate(leftExpression);
+        rightExpression = allocate(rightExpression);
+
+        DataType leftType = leftExpression.getDataType();
+        DataType rightType = rightExpression.getDataType();
+
+        boolean realComparison = false;
+        if (leftType == DataType.REAL || rightType == DataType.REAL) {
+            realComparison = true;
+            if (leftType != DataType.REAL) leftExpression = cast((UnnamedVarExpression) leftExpression, DataType.REAL);
+            if (rightType != DataType.REAL) rightExpression = cast((UnnamedVarExpression) rightExpression, DataType.REAL);
+        }
+
+        int leftIndex = ((UnnamedVarExpression) leftExpression).getIndex();
+        int rightIndex = ((UnnamedVarExpression) rightExpression).getIndex();
+
+        String llvmType;
+        String llvmCompare;
+        String compareTypeString = compareType.toString();
+        if (realComparison) {
+            llvmType = "double";
+            llvmCompare = "fcmp";
+            switch (compareTypeString) {
+                case "eq":
+                    compareTypeString = "oeq";
+                    break;
+                case "slt":
+                    compareTypeString = "olt";
+                    break;
+                case "sle":
+                    compareTypeString = "ole";
+                    break;
+                case "sge":
+                    compareTypeString = "oge";
+                    break;
+                case "sgt":
+                    compareTypeString = "ogt";
+                    break;
+                case "ne":
+                    compareTypeString = "une";
+                    break;
+            }
+        } else {
+            llvmType = "i32";
+            llvmCompare = "icmp";
+        }
+
+        llvm.append("  %" + varIndex++ + " = load " + llvmType + ", " + llvmType + "* %" + leftIndex + "\n", currentFunction);
+        llvm.append("  %" + varIndex++ + " = load " + llvmType + ", " + llvmType + "* %" + rightIndex + "\n", currentFunction);
+        llvm.append("  %" + varIndex + " = " + llvmCompare + " " + compareTypeString + " " + llvmType + " %" + (varIndex - 2) + ", %" + (varIndex - 1) + "\n", currentFunction);
+        llvm.append("  br i1 %" + varIndex++ + ", label %then" + instructionIndex + ", label %end" + instructionIndex + "\n\n", currentFunction);
+        llvm.append(" then" + instructionIndex + ":\n", currentFunction);
+
+        instructionStack.push(instructionIndex++);
+    }
+
+    public void endInstruction(InstructionType instructionType) {
+        int instructionToEnd = instructionStack.pop();
+        String direction = "compare";
+        if (instructionType.equals(InstructionType.IF))
+            direction = "end";
+        llvm.append("  br label %" + direction + instructionToEnd + "\n\n", currentFunction);
+        llvm.append(" end" + instructionToEnd + ":\n", currentFunction);
     }
 
     public UnnamedVarExpression callFunction(GlobalVarExpression function, List<Expression> arguments) {
@@ -289,6 +362,7 @@ public class LLVMGenerator {
                         leftFullName = "%var_" + leftName + leftIndex;
                     } else
                         actions.printError("assigning to non-existing lady " + leftName);
+
                 }
                 break;
             case CONSTANT:
@@ -700,7 +774,7 @@ public class LLVMGenerator {
 
         switch (newType) {
             case INT:
-                llvm.append("  %" + resultIndex + " = alloca i32 \n");
+                llvm.append("  %" + resultIndex + " = alloca i32 \n", currentFunction);
                 switch (previousType) {
                     case REAL:
                         llvm.append("  %" + (varIndex++) + " = load double, double* %" + index + "\n", currentFunction);
@@ -710,7 +784,7 @@ public class LLVMGenerator {
                 }
                 break;
             case REAL:
-                llvm.append("  %" + resultIndex + " = alloca double \n");
+                llvm.append("  %" + resultIndex + " = alloca double \n", currentFunction);
                 switch (previousType) {
                     case INT:
                         llvm.append("  %" + (varIndex++) + " = load i32, i32* %" + index + "\n", currentFunction);

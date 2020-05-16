@@ -1,12 +1,17 @@
 grammar MK;
 
-file                    : (statement  | function_declaration)* EOF;
+file                    : (statement  | function_declaration | instruction)* EOF;
 
-block                   : OPENBLOCK statement* CLOSEBLOCK;
+block                   : OPENBLOCK (statement | instruction)* CLOSEBLOCK;
 
 statement               : (variable_declaration | variable_assignment | command | array_declaration | array_assignment | function_call) ENDSTATEMENT;
 
 command                 : print | scan | returning;
+
+instruction             : IFSTATEMENT instruction1 block          #if_instruction
+                          | WHILESTATEMENT instruction1 block     #while_instruction
+                          ;
+instruction1            : OPENBRACKET expression COMPARESTATEMENT expression CLOSEBRACKET;
 
 variable_declaration    : DECLAREVARIABLE NAME (ASSIGN expression)?;
 variable_assignment     : NAME ASSIGN expression;
@@ -83,6 +88,11 @@ SCAN                    : 'hear ';
 INTSTATEMENT            : 'int ';
 REALSTATEMENT           : 'real ';
 STRSTATEMENT            : 'str ';
+
+IFSTATEMENT             : 'if';
+WHILESTATEMENT          : 'while';
+
+COMPARESTATEMENT        : '==' | '<' | '<=' | '>=' | '>' | '!=';
 
 NAME                    : [a-zA-Z][a-zA-Z0-9]*;
 
