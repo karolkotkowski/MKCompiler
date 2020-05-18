@@ -1,17 +1,24 @@
-int lady a = 1;
-int lady b;
+int lady a;
 
-int lady main() {
-    a = 2;
-    hear b;
-    while (a <= b) {
-        while (a < 4) {
-            whisper a;
-            whisper a;
-            a = a + 1;
-        }
-        whisper a;
+int lady print(int pr) {
+    whisper a;
+    whisper pr;
+    give 0;
+}
+
+int lady countUpTo(int c) {
+    while (a <= c) {
+        print(a);
         a = a + 1;
     }
     give 0;
 }
+
+int lady main() {
+    a = 1;
+    int lady max;
+    hear max;
+    countUpTo(max);
+    give 0;
+}
+

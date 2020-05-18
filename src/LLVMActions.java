@@ -199,29 +199,21 @@ public class LLVMActions extends MKBaseListener {
 
     @Override
     public void exitAdd(MKParser.AddContext context) {
-        int line = context.getStart().getLine();
-
         calculate(CalculationType.ADD);
     }
 
     @Override
     public void exitMultiply(MKParser.MultiplyContext context) {
-        int line = context.getStart().getLine();
-
         calculate(CalculationType.MUL);
     }
 
     @Override
     public void exitDivide(MKParser.DivideContext context) {
-        int line = context.getStart().getLine();
-
         calculate(CalculationType.DIV);
     }
 
     @Override
     public void exitSubtract(MKParser.SubtractContext context) {
-        int line = context.getStart().getLine();
-
         calculate(CalculationType.SUB);
     }
 
@@ -331,22 +323,16 @@ public class LLVMActions extends MKBaseListener {
 
         generator.declareVariable(leftExpression);
 
-        if (context.ASSIGN() == null) {
-            if (inFunction) {
-                switch (dataType) {
-                    case INT:
-                        generator.assignVariable(leftExpression, new ValueExpression(ObjectType.VARIABLE, dataType, 0));
-                        break;
-                    case REAL:
-                        generator.assignVariable(leftExpression, new ValueExpression(ObjectType.VARIABLE, dataType, 0.0));
-                        break;
-                }
+        if (inFunction) {
+            switch (dataType) {
+                case INT:
+                    generator.assignVariable(leftExpression, new ValueExpression(ObjectType.VARIABLE, dataType, 0));
+                    break;
+                case REAL:
+                    generator.assignVariable(leftExpression, new ValueExpression(ObjectType.VARIABLE, dataType, 0.0));
+                    break;
             }
-        } else {
-            Expression rightExpression = expressionStack.pop();
-            generator.assignVariable(leftExpression, rightExpression);
         }
-
     }
 
     @Override

@@ -16,7 +16,7 @@ instruction1            : OPENBRACKET expression COMPARESTATEMENT expression CLO
 variable_declaration    : INTSTATEMENT variable_declaration1    #int_variable_declaration
                           | REALSTATEMENT variable_declaration1 #real_variable_declaration
                           ;
-variable_declaration1   : DECLAREVARIABLE NAME (ASSIGN expression)?;
+variable_declaration1   : DECLAREVARIABLE NAME;
 variable_assignment     : NAME ASSIGN expression;
 
 function_declaration    : function_declaration1 block;
