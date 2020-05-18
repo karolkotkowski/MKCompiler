@@ -13,7 +13,10 @@ instruction             : IFSTATEMENT instruction1 block          #if_instructio
                           ;
 instruction1            : OPENBRACKET expression COMPARESTATEMENT expression CLOSEBRACKET;
 
-variable_declaration    : DECLAREVARIABLE NAME (ASSIGN expression)?;
+variable_declaration    : INTSTATEMENT variable_declaration1    #int_variable_declaration
+                          | REALSTATEMENT variable_declaration1 #real_variable_declaration
+                          ;
+variable_declaration1   : DECLAREVARIABLE NAME (ASSIGN expression)?;
 variable_assignment     : NAME ASSIGN expression;
 
 function_declaration    : function_declaration1 block;
@@ -61,10 +64,7 @@ array_element1          : NAME OPENARRAY array_index CLOSEARRAY;
 
 print                   : PRINT expression;
 
-scan                    : SCAN INTSTATEMENT NAME            #scan_int
-                          | SCAN REALSTATEMENT NAME         #scan_real
-                          | SCAN STRSTATEMENT NAME          #scan_str
-                          ;
+scan                    : SCAN NAME;
 
 ENDSTATEMENT            : ';';
 NEXTELEMENT             : ',';

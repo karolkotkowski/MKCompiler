@@ -1,5 +1,3 @@
-import org.antlr.v4.runtime.tree.TerminalNode;
-
 import java.util.*;
 
 public class LLVMActions extends MKBaseListener {
@@ -85,7 +83,7 @@ public class LLVMActions extends MKBaseListener {
             printError("calling main function not allowed");
         GlobalVarExpression function = functions.get(name);
 
-        int expectedArgumentsCount = function.getIndex();
+        int expectedArgumentsCount = function.getNumberOfArguments();
         int argumentsCount = countArguments(argumentsContext.getChildCount());
         if (expectedArgumentsCount != argumentsCount)
             printError("function " + name + "() called with " + argumentsCount + " argument(s). Expected: " + expectedArgumentsCount);
@@ -123,7 +121,7 @@ public class LLVMActions extends MKBaseListener {
         line = context.getStart().getLine();
         String name = context.NAME().getText();
 
-        NamedVarExpression argument = new NamedVarExpression(ObjectType.VARIABLE, DataType.INT, name, 0);
+        NamedVarExpression argument = new NamedVarExpression(ObjectType.VARIABLE, DataType.INT, name);
         expressionStack.push(argument);
     }
 
@@ -132,7 +130,7 @@ public class LLVMActions extends MKBaseListener {
         line = context.getStart().getLine();
         String name = context.NAME().getText();
 
-        NamedVarExpression argument = new NamedVarExpression(ObjectType.VARIABLE, DataType.REAL, name, 0);
+        NamedVarExpression argument = new NamedVarExpression(ObjectType.VARIABLE, DataType.REAL, name);
         expressionStack.push(argument);
     }
 
@@ -310,35 +308,42 @@ public class LLVMActions extends MKBaseListener {
     }
 
     @Override
-    public void exitVariable_declaration(MKParser.Variable_declarationContext context) {
+    public void exitInt_variable_declaration(MKParser.Int_variable_declarationContext context) {
+        declareVariable(DataType.INT, context.getChild(MKParser.Variable_declaration1Context.class, 0));
+    }
+
+    @Override
+    public void exitReal_variable_declaration(MKParser.Real_variable_declarationContext context) {
+        declareVariable(DataType.REAL, context.getChild(MKParser.Variable_declaration1Context.class, 0));
+    }
+
+    private void declareVariable(DataType dataType, MKParser.Variable_declaration1Context context) {
         line = context.getStart().getLine();
 
         String name = context.NAME().getText();
         ObjectType objectType = ObjectType.VARIABLE;
-        DataType dataType = DataType.NONE;
         Expression leftExpression;
 
+        if (inFunction)
+            leftExpression = new NamedVarExpression(objectType, dataType, name);
+        else
+            leftExpression = new GlobalVarExpression(objectType, dataType, name);
+
+        generator.declareVariable(leftExpression);
+
         if (context.ASSIGN() == null) {
-            if (inFunction)
-                leftExpression = new NamedVarExpression(objectType, dataType, name, 0);
-            else
-                leftExpression = new GlobalVarExpression(objectType, dataType, name, 0);
-
-            generator.declareVariable(leftExpression);
-
-            if (inFunction)
-                generator.assignVariable(leftExpression, new ValueExpression(ObjectType.VARIABLE, DataType.INT, 0));
+            if (inFunction) {
+                switch (dataType) {
+                    case INT:
+                        generator.assignVariable(leftExpression, new ValueExpression(ObjectType.VARIABLE, dataType, 0));
+                        break;
+                    case REAL:
+                        generator.assignVariable(leftExpression, new ValueExpression(ObjectType.VARIABLE, dataType, 0.0));
+                        break;
+                }
+            }
         } else {
             Expression rightExpression = expressionStack.pop();
-            dataType = rightExpression.getDataType();
-
-            if (inFunction)
-                leftExpression = new NamedVarExpression(objectType, dataType, name, 0);
-            else
-                leftExpression = new GlobalVarExpression(objectType, dataType, name, 0);
-
-            generator.declareVariable(leftExpression);
-
             generator.assignVariable(leftExpression, rightExpression);
         }
 
@@ -353,8 +358,12 @@ public class LLVMActions extends MKBaseListener {
 
         String name = context.NAME().getText();
         Expression leftExpression = generator.getLocalVariable(name);
-        if (leftExpression == null)
-            leftExpression = new GlobalVarExpression(ObjectType.VARIABLE, DataType.NONE, name, 0);
+        if (leftExpression == null) {
+            if (globalVariables.containsKey(name))
+                leftExpression = globalVariables.get(name);
+            else
+                printError("trying to assign to non-existing lady " + name);
+        }
 
         Expression rightExpression = expressionStack.pop();
 
@@ -373,31 +382,14 @@ public class LLVMActions extends MKBaseListener {
     }
 
     @Override
-    public void exitScan_int(MKParser.Scan_intContext context) {
+    public void exitScan(MKParser.ScanContext context) {
         line = context.getStart().getLine();
         String name = context.NAME().getText();
 
         if (!inFunction)
             printError("hearing not allowed outside a function body");
 
-        scan(DataType.INT, name);
-    }
-
-    @Override
-    public void exitScan_real(MKParser.Scan_realContext context) {
-        line = context.getStart().getLine();
-        String name = context.NAME().getText();
-
-        if (!inFunction)
-            printError("whispering not allowed outside a function body");
-
-        scan(DataType.REAL, name);
-    }
-
-    private void scan(DataType dataType, String name) {
-        Expression expression;
-
-        expression = generator.getLocalVariable(name);
+        Expression expression = generator.getLocalVariable(name);
         if (expression == null) {
             if (globalVariables.containsKey(name)) {
                 expression = globalVariables.get(name);
@@ -406,7 +398,7 @@ public class LLVMActions extends MKBaseListener {
             }
         }
 
-        generator.scan(dataType, expression);
+        generator.scan(expression.getDataType(), expression);
     }
 
     @Override

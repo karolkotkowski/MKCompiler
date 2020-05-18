@@ -1,5 +1,5 @@
 public enum DataType {
-    NONE, INT, REAL, CHAR;
+    INT, REAL, CHAR;
 
     public String toLLVM() {
         switch (this) {

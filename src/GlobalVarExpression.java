@@ -1,15 +1,22 @@
 public class GlobalVarExpression implements Expression {
     private DataType dataType;
     private String name;
-    private int index;
+    private int numberOfArguments;
     private ObjectType objectType;
     private Expression length; //it is array index when (this) is array element
 
-    //for variables and functions
+    //for variables
+    public GlobalVarExpression(ObjectType objectType, DataType dataType, String name) {
+        this.dataType = dataType;
+        this.name = name;
+        this.objectType = objectType;
+    }
+
+    //for functions
     public GlobalVarExpression(ObjectType objectType, DataType dataType, String name, int index) {
         this.dataType = dataType;
         this.name = name;
-        this.index = index; //when function it is a number of arguments
+        this.numberOfArguments = index; //when function it is a number of arguments
         this.objectType = objectType;
     }
 
@@ -17,7 +24,7 @@ public class GlobalVarExpression implements Expression {
     public GlobalVarExpression(ObjectType objectType, DataType dataType, String name, Expression length) {
         this.dataType = dataType;
         this.name = name;
-        this.index = index;
+        this.numberOfArguments = numberOfArguments;
         this.objectType = objectType;
         this.length = length;
     }
@@ -30,8 +37,8 @@ public class GlobalVarExpression implements Expression {
         return name;
     }
 
-    public int getIndex() {
-        return index;
+    public int getNumberOfArguments() {
+        return numberOfArguments;
     }
 
     public ObjectType getObjectType() {
