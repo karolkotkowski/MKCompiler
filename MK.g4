@@ -1,12 +1,15 @@
 grammar MK;
 
-file                    : (statement  | function_declaration | instruction)* EOF;
+file                    : class_declaration* EOF;
 
-block                   : OPENBLOCK (statement | instruction)* CLOSEBLOCK;
+block                   : OPENBLOCK (statement | instruction | function_declaration)* CLOSEBLOCK;
 
 statement               : (variable_declaration | variable_assignment | command | array_declaration | array_assignment | function_call) ENDSTATEMENT;
 
 command                 : print | scan | returning;
+
+class_declaration       : class_declaration1 block;
+class_declaration1      : CLASS NAME;
 
 instruction             : IFSTATEMENT instruction1 block          #if_instruction
                           | WHILESTATEMENT instruction1 block     #while_instruction
@@ -24,7 +27,7 @@ function_declaration1   : INTSTATEMENT function_declaration2    #int_function_de
                           | REALSTATEMENT function_declaration2 #real_function_declaration
                           ;
 function_declaration2   : DECLAREVARIABLE NAME arguments;
-function_call           : NAME call_arguments;
+function_call           : NAME ('.'NAME)? call_arguments;
 returning               : RETURN expression;
 
 arguments               : OPENBRACKET (argument (NEXTELEMENT argument)* )* CLOSEBRACKET;
@@ -77,6 +80,8 @@ OPENARRAY               : '[';
 CLOSEARRAY              : ']';
 
 ASSIGN                  : '=';
+
+CLASS                   : 'classy ';
 
 RETURN                  : 'give ';
 
