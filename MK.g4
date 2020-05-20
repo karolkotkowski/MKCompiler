@@ -4,12 +4,14 @@ file                    : class_declaration* EOF;
 
 block                   : OPENBLOCK (statement | instruction | function_declaration)* CLOSEBLOCK;
 
-statement               : (variable_declaration | variable_assignment | command | array_declaration | array_assignment | function_call) ENDSTATEMENT;
+statement               : (variable_declaration | variable_assignment | command | array_declaration | array_assignment | function_call | instance_declaration) ENDSTATEMENT;
 
 command                 : print | scan | returning;
 
 class_declaration       : class_declaration1 block;
 class_declaration1      : CLASS NAME;
+
+instance_declaration    : NAME ASSIGN CLASS NAME;
 
 instruction             : IFSTATEMENT instruction1 block          #if_instruction
                           | WHILESTATEMENT instruction1 block     #while_instruction
@@ -45,13 +47,13 @@ expression1             : expression2                       #single2
                           | expression1 DIV expression2     #divide
                           ;
 expression2             : bracket_expression                #bracket
-                          | NAME                            #name
+                          | NAME                            #variable
                           | INT                             #int
                           | REAL                            #real
                           | CHAR                            #char
                           | STR                             #str
                           | array_element1                  #array_element
-                          | NAME call_arguments             #function
+                          | NAME ('.'NAME)? call_arguments  #function
                           ;
 bracket_expression      : OPENBRACKET expression CLOSEBRACKET;
 

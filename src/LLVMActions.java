@@ -1,21 +1,128 @@
 import java.util.*;
 
 public class LLVMActions extends MKBaseListener {
-    private final HashMap<String, GlobalVarExpression> globalVariables = new HashMap<>();
-    private final LLVMGenerator generator = new LLVMGenerator(this, globalVariables);
+    private final LLVMGenerator generator = new LLVMGenerator(this);
     private final Stack<Expression> expressionStack = new Stack<>();
     private int line = 0;
     private final String fileName;
     private boolean inFunction = false; //flag for checking if currently in function body
     private boolean returning = false;  //flag for checking if a return statement occurred in a function
-    private final HashMap<String, GlobalVarExpression> functions = new HashMap<>();
+    private final Map<String, Classy> classies = new HashMap<>();
+    private Classy currentClassy;
+    private final Map<String, Instance> instances = new HashMap<>();
+    private Map<String, NamedVarExpression> localVariables;
 
     public LLVMActions(String fileName) {
         this.fileName = fileName;
     }
 
     @Override
-    public  void exitInstruction1(MKParser.Instruction1Context context) {
+    public void exitInstance_declaration(MKParser.Instance_declarationContext context) {
+        line = context.getStart().getLine();
+        String instanceName = context.NAME(0).getText();
+        String classyName = context.NAME(1).getText();
+
+        if (instances.containsKey(instanceName))
+            printError("instance with name " + instanceName + " already exists");
+        if (!classies.containsKey(classyName))
+            printError("trying to create an instance of non-existing classy " + classyName);
+        if (classies.containsKey(instanceName))
+            printError("trying to hide classy " + instanceName);
+        if ("Main".equals(instanceName) || "main".equals(instanceName))
+            printError("invalid instance name: " + instanceName);
+
+        declareInstance(instanceName, classyName);
+    }
+
+    private void declareInstance(String instanceName, String classyName) {
+        Classy classy = classies.get(classyName);
+        Instance instance = new Instance(instanceName, classy);
+        instances.put(instanceName, instance);
+
+        generator.getBuilder().setInInstanceDeclaration(true);
+        generator.setCurrentInstance(instance);
+
+        Iterator<GeneratorMethod> iterator = classy.getGeneratorMethods().iterator();
+        GeneratorMethod generatorMethod;
+        GeneratorMethodType type;
+        List<Object> arguments;
+        while (iterator.hasNext()) {
+            generatorMethod = iterator.next();
+            type = generatorMethod.getType();
+            arguments = generatorMethod.getArguments();
+            switch (type) {
+                case START_INSTRUCTION:
+                    generator.startInstruction((Expression) arguments.get(0), (CompareType) arguments.get(1), (Expression) arguments.get(2));
+                    break;
+                case END_INSTRUCTION:
+                    generator.endInstruction((InstructionType) arguments.get(0));
+                    break;
+                case CALL_FUNCTION:
+                    generator.callFunction((Instance) arguments.get(0), (Method) arguments.get(1), (List<Expression>) arguments.get(2));
+                    break;
+                case DECLARE_FUNCTION:
+                    generator.declareFunction((Method) arguments.get(0), (List<Expression>) arguments.get(1));
+                    break;
+                case END_FUNCTION_DEFINITION:
+                    generator.endFunctionDefinition();
+                    break;
+                case DO_RETURNING:
+                    generator.doReturning((Expression) arguments.get(0));
+                    break;
+                case CALCULATION:
+                    generator.calculate((Expression) arguments.get(0), (CalculationType) arguments.get(1), (Expression) arguments.get(2), (boolean) arguments.get(3));
+                    break;
+                case DECLARE_VARIABLE:
+                    generator.declareVariable((Expression) arguments.get(0));
+                    break;
+                case ASSIGN_VARIABLE:
+                    generator.assignVariable((Expression) arguments.get(0), (Expression) arguments.get(1));
+                    break;
+                case PRINT:
+                    generator.print((Expression) arguments.get(0));
+                    break;
+                case SCAN:
+                    generator.scan((DataType) arguments.get(0), (Expression) arguments.get(1));
+                    break;
+                case DECLARE_ARRAY:
+                    generator.declareArray((Expression) arguments.get(0), (int) arguments.get(1), (List<Expression>) arguments.get(2));
+                    break;
+            }
+        }
+
+        generator.getBuilder().setInInstanceDeclaration(false);
+
+        if (classy.hasMethod("initialize")) {
+            GeneratorMethod gm = new GeneratorMethod(GeneratorMethodType.CALL_FUNCTION, instance, classy.getMethod("initialize"), new ArrayList<>());
+            currentClassy.addGeneratorMethod(gm);
+        }
+    }
+
+    @Override
+    public void exitClass_declaration(MKParser.Class_declarationContext context) {
+        //line = context.getStop().getLine();
+
+        if ("Main".equals(currentClassy.getName())) {
+            declareInstance("main", "Main");
+        }
+
+        currentClassy = null;
+    }
+
+    @Override
+    public void exitClass_declaration1(MKParser.Class_declaration1Context context) {
+        line = context.getStart().getLine();
+        String name = context.NAME().getText();
+
+        if (classies.containsKey(name))
+            printError("declaring already existing classy " + name);
+        Classy classy = new Classy(name);
+        classies.put(name, classy);
+        currentClassy = classy;
+    }
+
+    @Override
+    public void exitInstruction1(MKParser.Instruction1Context context) {
         line = context.getStart().getLine();
         Expression rightExpression = expressionStack.pop();
         Expression leftExpression = expressionStack.pop();
@@ -48,7 +155,8 @@ public class LLVMActions extends MKBaseListener {
                 compareType = null;
         }
 
-        generator.startInstruction(leftExpression, compareType, rightExpression);
+        GeneratorMethod gm = new GeneratorMethod(GeneratorMethodType.START_INSTRUCTION, leftExpression, compareType, rightExpression);
+        currentClassy.addGeneratorMethod(gm);
     }
 
     @Override
@@ -56,7 +164,8 @@ public class LLVMActions extends MKBaseListener {
         line = context.getStart().getLine();
         InstructionType instructionType = InstructionType.IF;
 
-        generator.endInstruction(instructionType);
+        GeneratorMethod gm = new GeneratorMethod(GeneratorMethodType.END_INSTRUCTION, instructionType);
+        currentClassy.addGeneratorMethod(gm);
     }
 
     @Override
@@ -64,7 +173,8 @@ public class LLVMActions extends MKBaseListener {
         line = context.getStart().getLine();
         InstructionType instructionType = InstructionType.WHILE;
 
-        generator.endInstruction(instructionType);
+        GeneratorMethod gm = new GeneratorMethod(GeneratorMethodType.END_INSTRUCTION, instructionType);
+        currentClassy.addGeneratorMethod(gm);
     }
 
     private int countArguments(int childCount) {
@@ -74,19 +184,26 @@ public class LLVMActions extends MKBaseListener {
         return argumentsCount;
     }
 
-    private UnnamedVarExpression callFunction(String name, MKParser.Call_argumentsContext argumentsContext) {
+    private NamedVarExpression callFunction(String instanceName, String methodName, MKParser.Call_argumentsContext argumentsContext) {
         if (!inFunction)
-            printError("calling function not allowed outside a function body");
-        if (!functions.containsKey(name))
-            printError("calling non-existing function " + name + "()");
-        if ("main".equals(name))
-            printError("calling main function not allowed");
-        GlobalVarExpression function = functions.get(name);
+            printError("calling a method not allowed outside a method body");
+        if ("main".equals(methodName))
+            printError("calling main() method not allowed");
+        if (!instances.containsKey(instanceName))
+            printError("instance " + instanceName + " does not exist");
 
-        int expectedArgumentsCount = function.getNumberOfArguments();
+        Instance instance = instances.get(instanceName);
+        Classy classy = instance.getClassy();
+        if (!classy.hasMethod(methodName))
+            printError("calling non-existing method " + instanceName + "." + methodName + "()");
+
+        Method method = classy.getMethod(methodName);
+        List<DataType> methodArguments = method.getArguments();
+
+        int expectedArgumentsCount = methodArguments.size();
         int argumentsCount = countArguments(argumentsContext.getChildCount());
         if (expectedArgumentsCount != argumentsCount)
-            printError("function " + name + "() called with " + argumentsCount + " argument(s). Expected: " + expectedArgumentsCount);
+            printError("method " + instanceName + "." + methodName + "() called with " + argumentsCount + " argument(s). Expected: " + expectedArgumentsCount);
 
         List<Expression> arguments = new ArrayList<>(argumentsCount);
         for (int i = 0; i < argumentsCount; i++) {
@@ -94,26 +211,30 @@ public class LLVMActions extends MKBaseListener {
         }
         Collections.reverse(arguments);
 
-        return generator.callFunction(function, arguments);
+        GeneratorMethod gm = new GeneratorMethod(GeneratorMethodType.CALL_FUNCTION, instance, method, arguments);
+        currentClassy.addGeneratorMethod(gm);
+        return new NamedVarExpression(ObjectType.VARIABLE, method.getDataType(), "ret_" + instanceName + "_" + methodName);
     }
 
     @Override
     public void exitFunction(MKParser.FunctionContext context) {
         line = context.getStart().getLine();
-        String name = context.NAME().getText();
+        String instanceName = context.NAME(0).getText();
+        String methodName = context.NAME(1).getText();
         MKParser.Call_argumentsContext argumentsContext = context.getChild(MKParser.Call_argumentsContext.class, 0);
 
-        UnnamedVarExpression functionValue = callFunction(name, argumentsContext);
+        NamedVarExpression functionValue = callFunction(instanceName, methodName, argumentsContext);
         expressionStack.push(functionValue);
     }
 
     @Override
     public void exitFunction_call(MKParser.Function_callContext context) {
         line = context.getStart().getLine();
-        String name = context.NAME().getText();
+        String instanceName = context.NAME(0).getText();
+        String methodName = context.NAME(1).getText();
         MKParser.Call_argumentsContext argumentsContext = context.getChild(MKParser.Call_argumentsContext.class, 0);
 
-        callFunction(name, argumentsContext);
+        callFunction(instanceName, methodName, argumentsContext);
     }
 
     @Override
@@ -154,35 +275,46 @@ public class LLVMActions extends MKBaseListener {
         String name = context2.NAME().getText();
         MKParser.ArgumentsContext context3 = context2.getChild(MKParser.ArgumentsContext.class, 0);
         int childCount = context3.getChildCount();
+        localVariables = new HashMap<>();
 
         int argumentsCount = countArguments(childCount);
 
         if (inFunction)
-            printError("defining function not allowed inside another function");
-        if (functions.containsKey(name))
-            printError("defining already existing function" + name + "()");
+            printError("defining method not allowed inside another method");
+        if (currentClassy.hasMethod(name))
+            printError("defining already existing method " + name + "()");
 
-        List<Expression> arguments = new ArrayList<>(argumentsCount);
+        List<NamedVarExpression> arguments = new ArrayList<>(argumentsCount);
+        List<DataType> argumentsTypes = new ArrayList<>(argumentsCount);
+        Expression expression;
         for (int i = 0; i < argumentsCount; i++) {
-            arguments.add(expressionStack.pop());
+            expression = expressionStack.pop();
+            arguments.add((NamedVarExpression) expression);
+            argumentsTypes.add(expression.getDataType());
+            localVariables.put(((NamedVarExpression) expression).getName(), (NamedVarExpression) expression);
         }
         Collections.reverse(arguments);
+        Collections.reverse(argumentsTypes);
 
         inFunction = true;
         returning = false;
-        GlobalVarExpression function = new GlobalVarExpression(ObjectType.FUNCTION, dataType, name, argumentsCount);
-        functions.put(name, function);
-        generator.declareFunction(function, arguments);
+        Method method = new Method(name, dataType, argumentsTypes);//GlobalVarExpression(ObjectType.FUNCTION, dataType, name, argumentsCount, currentClassy);
+        currentClassy.addMethod(name, method);
+
+        GeneratorMethod gm = new GeneratorMethod(GeneratorMethodType.DECLARE_FUNCTION, method, arguments);
+        currentClassy.addGeneratorMethod(gm);
     }
 
     @Override
     public void exitFunction_declaration(MKParser.Function_declarationContext context) {
         line = context.getStart().getLine();
         if (!returning)
-            printError("missing give statement in function body");
+            printError("missing give statement in method body");
         inFunction = false;
         returning = false;
-        generator.endFunctionDefinition();
+
+        GeneratorMethod gm = new GeneratorMethod(GeneratorMethodType.END_FUNCTION_DEFINITION, null);
+        currentClassy.addGeneratorMethod(gm);
     }
 
     @Override
@@ -191,10 +323,11 @@ public class LLVMActions extends MKBaseListener {
         Expression expression = expressionStack.pop();
 
         if (!inFunction)
-            printError("give statement used while not in function body");
+            printError("give statement used while not in method body");
         returning = true;
 
-        generator.doReturning(expression);
+        GeneratorMethod gm = new GeneratorMethod(GeneratorMethodType.DO_RETURNING, expression);
+        currentClassy.addGeneratorMethod(gm);
     }
 
     @Override
@@ -219,10 +352,23 @@ public class LLVMActions extends MKBaseListener {
 
     private void calculate(CalculationType calculationType) {
         Expression rightExpression = expressionStack.pop();
+        DataType rightType = rightExpression.getDataType();
         Expression leftExpression = expressionStack.pop();
+        DataType leftType = leftExpression.getDataType();
 
-        UnnamedVarExpression result = generator.calculate(leftExpression, calculationType, rightExpression);
-        expressionStack.push(result);
+        boolean realCalculation = false;
+        String resultName = "res_int";
+        DataType dataType = DataType.INT;
+        if (leftType == DataType.REAL || rightType == DataType.REAL || calculationType == CalculationType.DIV) {
+            realCalculation = true;
+            resultName = "res_real";
+            dataType = DataType.REAL;
+        }
+
+        expressionStack.push(new NamedVarExpression(ObjectType.VARIABLE, dataType, resultName));
+
+        GeneratorMethod gm = new GeneratorMethod(GeneratorMethodType.CALCULATION, leftExpression, calculationType, rightExpression, realCalculation);
+        currentClassy.addGeneratorMethod(gm);
     }
 
     @Override
@@ -256,19 +402,21 @@ public class LLVMActions extends MKBaseListener {
     }*/
 
     @Override
-    public void exitName(MKParser.NameContext context) {
+    public void exitVariable(MKParser.VariableContext context) {
         line = context.getStart().getLine();
 
         String name = context.NAME().getText();
 
-        Expression expression = generator.getLocalVariable(name);
-        if (expression == null) {
-            if (globalVariables.containsKey(name)) {
-                expression = globalVariables.get(name);
+        Expression expression = null;
+        if (!localVariables.containsKey(name)) {
+            if (currentClassy.hasField(name)) {
+                expression = currentClassy.getField(name);
             } else {
-                printError("using non-existing lady " + name);
+
+                    printError("using non-existing lady " + name);
             }
-        }
+        } else
+            expression = localVariables.get(name);
 
         expressionStack.push(expression);
     }
@@ -290,13 +438,11 @@ public class LLVMActions extends MKBaseListener {
         String name = context.NAME().getText();
         Expression index = expressionStack.pop();
 
-        if (globalVariables.containsKey(name)) {
-            GlobalVarExpression array = globalVariables.get(name);
-            expressionStack.push(new GlobalVarExpression(ObjectType.ARRAY_ELEMENT, array.getDataType(), name, index));
+        if (currentClassy.hasField(name)) {
+            GlobalVarExpression array = currentClassy.getField(name);
+            expressionStack.push(new GlobalVarExpression(ObjectType.ARRAY_ELEMENT, array.getDataType(), name, index, currentClassy));
         } else
             printError("using non-existing array lady " + name);
-
-
     }
 
     @Override
@@ -316,20 +462,30 @@ public class LLVMActions extends MKBaseListener {
         ObjectType objectType = ObjectType.VARIABLE;
         Expression leftExpression;
 
-        if (inFunction)
+        if (inFunction) {
+            if (localVariables.containsKey(name))
+                printError("declaring already existing variable " + name);
             leftExpression = new NamedVarExpression(objectType, dataType, name);
-        else
-            leftExpression = new GlobalVarExpression(objectType, dataType, name);
+            localVariables.put(name, (NamedVarExpression) leftExpression);
+        } else {
+            if (currentClassy.hasField(name))
+                printError("declaring already existing variable " + name);
+            leftExpression = new GlobalVarExpression(objectType, dataType, name, currentClassy);
+            currentClassy.addField((GlobalVarExpression) leftExpression);
+        }
 
-        generator.declareVariable(leftExpression);
+        GeneratorMethod gm = new GeneratorMethod(GeneratorMethodType.DECLARE_VARIABLE, leftExpression);
+        currentClassy.addGeneratorMethod(gm);
 
         if (inFunction) {
             switch (dataType) {
                 case INT:
-                    generator.assignVariable(leftExpression, new ValueExpression(ObjectType.VARIABLE, dataType, 0));
+                    gm = new GeneratorMethod(GeneratorMethodType.ASSIGN_VARIABLE, leftExpression, new ValueExpression(ObjectType.VARIABLE, dataType, 0));
+                    currentClassy.addGeneratorMethod(gm);
                     break;
                 case REAL:
-                    generator.assignVariable(leftExpression, new ValueExpression(ObjectType.VARIABLE, dataType, 0.0));
+                    gm = new GeneratorMethod(GeneratorMethodType.ASSIGN_VARIABLE, leftExpression, new ValueExpression(ObjectType.VARIABLE, dataType, 0.0));
+                    currentClassy.addGeneratorMethod(gm);
                     break;
             }
         }
@@ -340,20 +496,25 @@ public class LLVMActions extends MKBaseListener {
         line = context.getStart().getLine();
 
         if (!inFunction)
-            printError("assigning to variable not allowed outside a function body");
+            printError("assigning to a variable not allowed outside a method body");
 
         String name = context.NAME().getText();
-        Expression leftExpression = generator.getLocalVariable(name);
-        if (leftExpression == null) {
-            if (globalVariables.containsKey(name))
-                leftExpression = globalVariables.get(name);
+        Expression leftExpression = null;
+        if (!localVariables.containsKey(name)) {
+            if (currentClassy.hasField(name))
+                leftExpression = currentClassy.getField(name);
             else
                 printError("trying to assign to non-existing lady " + name);
-        }
+        } else
+            leftExpression = localVariables.get(name);
 
         Expression rightExpression = expressionStack.pop();
 
-        generator.assignVariable(leftExpression, rightExpression);
+        if (leftExpression.getDataType() != rightExpression.getDataType())
+            printError("types mismatch");
+
+        GeneratorMethod gm = new GeneratorMethod(GeneratorMethodType.ASSIGN_VARIABLE, leftExpression, rightExpression);
+        currentClassy.addGeneratorMethod(gm);
     }
 
     @Override
@@ -364,7 +525,9 @@ public class LLVMActions extends MKBaseListener {
             printError("whispering not allowed outside a function body");
 
         Expression expression = expressionStack.pop();
-        generator.print(expression);
+
+        GeneratorMethod gm = new GeneratorMethod(GeneratorMethodType.PRINT, expression);
+        currentClassy.addGeneratorMethod(gm);
     }
 
     @Override
@@ -375,16 +538,18 @@ public class LLVMActions extends MKBaseListener {
         if (!inFunction)
             printError("hearing not allowed outside a function body");
 
-        Expression expression = generator.getLocalVariable(name);
-        if (expression == null) {
-            if (globalVariables.containsKey(name)) {
-                expression = globalVariables.get(name);
+        Expression expression = null;
+        if (!localVariables.containsKey(name)) {
+            if (currentClassy.hasField(name)) {
+                expression = currentClassy.getField(name);
             } else {
-                printError("getting non-existing lady " + name + " to hear");
+                printError("using non-existing lady " + name);
             }
-        }
+        } else
+            expression = localVariables.get(name);
 
-        generator.scan(expression.getDataType(), expression);
+        GeneratorMethod gm = new GeneratorMethod(GeneratorMethodType.SCAN, expression.getDataType(), expression);
+        currentClassy.addGeneratorMethod(gm);
     }
 
     @Override
@@ -426,8 +591,9 @@ public class LLVMActions extends MKBaseListener {
                 printError("assigning more elements to an array lady than declared");
         }
 
-        GlobalVarExpression array = new GlobalVarExpression(ObjectType.ARRAY, dataType, name, 0);
-        generator.declareArray(array, arrayLength, elements);
+        GlobalVarExpression array = new GlobalVarExpression(ObjectType.ARRAY, dataType, name, 0, currentClassy);
+        GeneratorMethod gm = new GeneratorMethod(GeneratorMethodType.DECLARE_ARRAY, array, arrayLength, elements);
+        currentClassy.addGeneratorMethod(gm);
     }
 
     @Override
@@ -437,7 +603,8 @@ public class LLVMActions extends MKBaseListener {
         Expression rightExpression = expressionStack.pop();
         Expression leftExpression = expressionStack.pop();
 
-        generator.assignVariable(leftExpression, rightExpression);
+        GeneratorMethod gm = new GeneratorMethod(GeneratorMethodType.ASSIGN_VARIABLE, leftExpression, rightExpression);
+        currentClassy.addGeneratorMethod(gm);
     }
 
     @Override

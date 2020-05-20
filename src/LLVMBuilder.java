@@ -4,7 +4,13 @@ public class LLVMBuilder {
     private StringBuilder headerBuilder = new StringBuilder();
     private StringBuilder mainBuilder = new StringBuilder();
     private StringBuilder mainDeclarationBuilder = new StringBuilder();
+    private StringBuilder instancesBuilder = new StringBuilder();
     private boolean bufferHeld = false;
+    private boolean inInstanceDeclaration = true;
+
+    public void setInInstanceDeclaration(boolean inInstanceDeclaration) {
+        this.inInstanceDeclaration = inInstanceDeclaration;
+    }
 
     public void holdBuffer() {
         bufferHeld = true;
@@ -23,16 +29,21 @@ public class LLVMBuilder {
         if (bufferHeld) {
             buffer.append(object);
         } else {
-            builder.append(object);
+            if (inInstanceDeclaration)
+                instancesBuilder.append(object);
+            else
+                builder.append(object);
         }
     }
 
-    public void append(Object object, GlobalVarExpression currentFunction) {
+    public void append(Object object, Method currentFunction) {
         String currentFunctionName;
+
         if (currentFunction == null)
             currentFunctionName = "main";
         else
-            currentFunctionName = currentFunction.getName();;
+            currentFunctionName = currentFunction.getName();
+
         if ("main".equals(currentFunctionName))
             appendToMain(object);
         else
@@ -62,6 +73,6 @@ public class LLVMBuilder {
 
     @Override
     public String toString() {
-        return headerBuilder.toString() + mainDeclarationBuilder.toString() + mainBuilder.toString() + builder.toString();
+        return headerBuilder.toString() + mainDeclarationBuilder.toString() + mainBuilder.toString() + builder.toString() + instancesBuilder.toString();
     }
 }
